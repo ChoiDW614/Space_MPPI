@@ -8,7 +8,7 @@ from collections import deque
 from builtin_interfaces.msg import Time as MSG_Time
 from geometry_msgs.msg import TransformStamped, PoseStamped
 
-from mppi_solver.src.solver.filter.kalman_filter import SatellitePoseKalmanFilter
+from mppi_solver.src.solver.filter.kalman_filter import PoseKalmanFilter
 from mppi_solver.src.utils.rotation_conversions import euler_angles_to_matrix, matrix_to_euler_angles
 
 from mppi_solver.src.utils.pose import Pose
@@ -30,26 +30,24 @@ class DockingInterface(object):
         self.fk_ets_vii.set_mount_transformation(torch.eye(4))
         self.fk_ets_vii.set_samples_and_timesteps(1, 1, 0)
 
-        self.interface_time = Time()
-        self.interface_time_prev = Time()
         self.sim_time = Time()
+        self.sim_time_prev = Time()
 
         self.align_pose = Pose()
         self.esti_docking_pose = Pose()
         self.esti_docking_pose_prev = Pose()
 
         # kalman filter
-        self.ekf = SatellitePoseKalmanFilter(dim_x=6, dim_z=6)
+        self.ekf = PoseKalmanFilter(dim_x=6, dim_z=6)
 
         self.vel_pos = torch.tensor([0.0, 0.0, 0.0])
         self.vel_rpy = torch.tensor([0.0, 0.0, 0.0])
         self.vel_pos_prev = None
         self.vel_rpy_prev = None
-        self.pos_spike_thresh = 2.5
-        self.rpy_spike_thresh = 100
         self.predict_docking_pose = None
-        self.predict_docking_pose_torch = torch.zeros((predict_step, 6), dtype=torch.float32)
         self.predict_interface_cov = None
+        self.predict_pose_list = list()
+        self.predict_conv_list = list()
 
         self.n_predict = predict_step
         self.dt = 0.0
@@ -61,16 +59,11 @@ class DockingInterface(object):
         self.tmp_pose = Pose()
         self.docking_transformation_matrix = torch.eye(4)
         self.docking_transformation_matrix[2, 3] = -1.0
-
-        # Hampel filter parameters
-        self.hampel_window_size = 7
-        self.hampel_k = 3
-        self.hampel_deque = deque(maxlen=self.hampel_window_size)
-        self.hampel_deque.append(torch.zeros(3))
+        self.true_docking_pose_kalman = Pose()
 
         # test
-        self.u_deque = deque(maxlen=101)
-        self.u_deque.append(np.array([0,0,0,0,0,0], dtype=np.float32))
+        self.vel_deque = deque(maxlen=32)
+        self.vel_deque.append(np.array([0,0,0,0,0,0], dtype=np.float32))
 
         # MPPI Controller reference
         self._controller_ref = controller_ref
@@ -78,35 +71,25 @@ class DockingInterface(object):
         # Log
         self.matlab_logger = MATLABLogger(script_name=Path(__file__).stem, file_name="target_pose")
         self.matlab_logger.create_dataset(dataset_name="true_pose", shape=7)
+        self.matlab_logger.create_dataset(dataset_name="kalman_pose", shape=7)
         self.matlab_logger.create_dataset(dataset_name="vel", shape=7)
-        self.matlab_logger.create_dataset(dataset_name="mean_vel", shape=7)
+        self.matlab_logger.create_dataset(dataset_name="vel_mean", shape=7)
 
 
     def update_velocity(self):
-        self.dt = self.interface_time.time - self.interface_time_prev.time
+        self.dt = self.sim_time.time - self.sim_time_prev.time
 
-        if len(self.hampel_deque) == self.hampel_window_size:
-            prev_pose = self.hampel_deque[-1].clone()
-            arr = torch.stack(list(self.hampel_deque), dim=0)
-            median, _ = torch.median(arr, dim=0)
-            mad = torch.abs(arr - median).median(dim=0).values + 1e-3
-
-            thresh = self.hampel_k * 1.4826 * mad
-            is_outlier = torch.abs(self.true_docking_pose.pose - median) > thresh
-            self.true_docking_pose.pose = torch.where(is_outlier, prev_pose, self.true_docking_pose.pose)
-
-        self.hampel_deque.append(self.true_docking_pose.pose.clone())
         self.compute_velocity(self.true_docking_pose, self.true_docking_pose_prev)
         self.matlab_logger.log("vel", [self.sim_time.time] + self.vel_pos.tolist() + self.vel_rpy.tolist())
 
         # test
-        self.u_deque.append(np.concatenate([self.vel_pos.numpy(), self.vel_rpy.numpy()]))
-        self.u_mean = np.mean(np.stack(self.u_deque, axis=0), axis=0)
-        self.matlab_logger.log("mean_vel", [self.sim_time.time] + self.u_mean.tolist())
+        self.vel_deque.append(np.concatenate([self.vel_pos.numpy(), self.vel_rpy.numpy()]))
+        self.vel_mean = np.mean(np.stack(self.vel_deque, axis=0), axis=0)
+        self.matlab_logger.log("vel_mean", [self.sim_time.time] + self.vel_mean.tolist())
 
         # prev state
         self.true_docking_pose_prev = self.true_docking_pose.clone()
-        self.interface_time_prev.time = self.interface_time.time
+        self.sim_time_prev.time = self.sim_time.time
         return
     
 
@@ -115,8 +98,6 @@ class DockingInterface(object):
             self.vel_pos_prev = torch.zeros_like(pose.pose)
 
         self.vel_pos = (pose.pose - pose_prev.pose) / self.dt
-        mask = self.vel_pos.abs() > self.pos_spike_thresh
-        self.vel_pos[mask] = self.vel_pos_prev[mask]
         self.vel_pos_prev = self.vel_pos.clone()
 
         if self.vel_rpy_prev is None:
@@ -125,11 +106,8 @@ class DockingInterface(object):
         diff = pose.rpy - self.vel_rpy_prev
         diff = torch.atan2(torch.sin(diff), torch.cos(diff))
 
-        mask = diff.abs() > self.rpy_spike_thresh
-        diff[mask] = self.vel_rpy_prev[mask]
-
         self.vel_rpy_prev += diff
-        self.vel_rpy= diff / self.dt
+        self.vel_rpy = diff / self.dt
         return
 
 
@@ -137,10 +115,11 @@ class DockingInterface(object):
         # calculate velocity
         if self.is_initialize_kalman:
             self.update_velocity()
-            # self.true_docking_pose.pose = self.ekf.predict_and_update(self.true_docking_pose, self.vel_pos, self.vel_rpy, self.dt)
+            self.true_docking_pose_kalman = self.ekf.predict_and_update(self.true_docking_pose, self.vel_pos, self.vel_rpy, self.dt)
             self.predict_docking_pose, self.predict_interface_cov = self.ekf.predict_multi_step(self.n_predict)
-            self.predict_pose_numpy_to_torch()
+            self.array_to_predict_pose_list()
             self.matlab_logger.log("true_pose", [self.sim_time.time] + self.true_docking_pose.np_pose.tolist() + self.true_docking_pose.np_rpy.tolist())
+            self.matlab_logger.log("kalman_pose", [self.sim_time.time] + self.true_docking_pose_kalman.np_pose.tolist() + self.true_docking_pose_kalman.np_rpy.tolist())
 
 
     def set_true_docking_pose(self, pose: TransformStamped):
@@ -172,7 +151,7 @@ class DockingInterface(object):
         return
     
 
-    def predict_pose_numpy_to_torch(self):
+    def array_to_predict_pose_list(self):
         n_step, n_x = self.predict_docking_pose.shape
         T = torch.eye(4).unsqueeze(0).expand(n_step, 4, 4).clone()
 
@@ -209,9 +188,18 @@ class DockingInterface(object):
             torch.stack([R20, R21, R22], dim=1)
             ], dim=1)
         T[:, :3, :3] = R
+        # pose_torch = torch.cat([T[:, :3, 3], matrix_to_euler_angles(T[:,0:3,0:3], "ZYX")], dim=1)
 
-        self.predict_docking_pose_torch = torch.cat([T[:, :3, 3], matrix_to_euler_angles(T[:,0:3,0:3], "ZYX")], dim=1)
+        self.predict_pose_list = []
+        self.predict_conv_list = []
+        for i in range(n_step):
+            p = Pose()
+            p.pose = T[i,:3,3]
+            p.from_rotataion_matrix(T[i,0:3,0:3])
+            self.predict_pose_list.append(p)
+            self.predict_conv_list.append(torch.from_numpy(self.predict_interface_cov[i,:,:]))
         return
+    
 
     @property
     def align_docking_pose(self):
@@ -224,7 +212,6 @@ class DockingInterface(object):
     def true_align_docking_pose(self):
         if not self._controller_ref.is_align:
             T = torch.eye(4)
-            T[2, 3] = -0.5
             self.align_pose.from_matrix(self.true_docking_pose.tf_matrix() @ T)
             # self.logger.info("not align docking pose")
         else:
@@ -251,34 +238,35 @@ class DockingInterface(object):
 
     @property
     def predict_pose(self):
-        return self.predict_docking_pose_torch
+        return self.predict_pose_list
+    
+    @property
+    def predict_conv(self):
+        return self.predict_conv_list
 
     @property
     def time(self):
-        return self.interface_time.time
+        return self.sim_time.time
     
     @time.setter
     def time(self, time: Time):
         if isinstance(time, Time):
-            self.interface_time = time
+            self.sim_time = time
         elif isinstance(time, MSG_Time):
-            self.interface_time.time = time
+            self.sim_time.time = time
         else:
-            self.interface_time.time = time
+            self.sim_time.time = time
 
     @property
     def time_prev(self):
-        return self.interface_time_prev.time
+        return self.sim_time.time
     
     @time_prev.setter
     def time_prev(self, time):
         if isinstance(time, Time):
-            self.interface_time_prev = time
+            self.sim_time = time
         elif isinstance(time, MSG_Time):
-            self.interface_time_prev.time = time
+            self.sim_time.time = time
         else:
-            self.interface_time_prev.time = time
-
-    
-
+            self.sim_time.time = time
 

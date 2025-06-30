@@ -110,12 +110,9 @@ class MppiSolverNode(Node):
         self.tmp = None
 
 
-
-
-
     def cal_timer_callback(self):
-        # if self.targetOK and self.init_jointCB and (self.sim_time.time > 10.0):
-        if self.is_target and self.init_jointCB:
+        if self.is_target and self.init_jointCB and (self.sim_time.time > 10.0):
+        # if self.is_target and self.init_jointCB:
             if self.is_init_trajectory:
 
                 targetSE3 = self.targetSE3 * self.canadarmWrapper.eef_to_tip.inverse()

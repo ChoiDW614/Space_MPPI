@@ -16,7 +16,7 @@ class StandardSamplling:
         self.n_action = n_action
         self.sigma = torch.eye((self.n_action), device = self.device) * 0.3
 
-        self.sigma_matrix : torch.Tensor
+        self.sigma_matrix = self.sigma.expand(self.n_sample, self.n_horizon, -1, -1)
 
 
     def sampling(self):

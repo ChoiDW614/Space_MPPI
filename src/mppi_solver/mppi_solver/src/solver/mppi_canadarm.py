@@ -124,6 +124,7 @@ class MPPI():
 
         # 250519
         self.noise = None
+        self.noise_prev = torch.zeros((self.n_samples, self.n_horizen, self.n_action), device=self.device)
         self.uSamples = None
         self.param_gamma = self._lambda * (1.0 - 0.9)
         self.is_reaching = False
@@ -134,7 +135,7 @@ class MPPI():
         self.matlab_logger.create_dataset(dataset_name="end_effector_pose", shape=7)
         self.matlab_logger.create_dataset(dataset_name="pos_err", shape=4)
         self.matlab_logger.create_dataset(dataset_name="ori_err", shape=4)
-        self.matlab_logger.create_dataset(dataset_name="cost", shape=5)
+        self.matlab_logger.create_dataset(dataset_name="cost", shape=7)
 
         self.reference_joint = None
         self.reference_se3 = None
@@ -142,7 +143,7 @@ class MPPI():
         
 
     def check_reach(self):
-        self.ee_pose.from_matrix(self.fk_canadarm.forward_kinematics_cpu(self._q[self.n_mobile_dof:], 'EE_SSRMS_tip', 'Base_SSRMS', init_transformation=None, base_movement=False))
+        self.ee_pose.from_matrix(self.fk_canadarm.forward_kinematics_cpu(self._q[self.n_mobile_dof:], 'EE_SSRMS_tip', 'Base_SSRMS', init_transformation=self.base_pose.tf_matrix(), base_movement=False))
         pose_err = pos_diff(self.ee_pose, self.target_pose)
         ee_ori_mat = euler_angles_to_matrix(self.ee_pose.rpy, "ZYX")
         target_ori_mat = euler_angles_to_matrix(self.target_pose.rpy, "ZYX")
@@ -185,6 +186,7 @@ class MPPI():
 
         self.u_prev = u.clone()
         self.u = u[0].clone()
+        self.noise_prev = noise.clone()
 
         self.vdes = self._qdot + self.u * self.dt
         self.qdes = self._q + self._qddot * self.dt + 0.5 * self.u * self.dt * self.dt
@@ -224,12 +226,16 @@ class MPPI():
         prev_stage_cost     = self.cost_manager.pose_cost.compute_prev_stage_cost(ee_traj_prev, self.target_pose)
         prev_terminal_cost  = self.cost_manager.pose_cost.compute_prev_terminal_cost(ee_traj_prev, self.target_pose)
         prev_centering_cost = self.cost_manager.joint_cost.compute_prev_centering_cost(q_prev)
+        prev_tracking_cost  = self.cost_manager.joint_cost.compute_prev_jointTraj_cost(q_prev, self.reference_joint)
         prev_action_cost    = self.cost_manager.action_cost.compute_prev_action_cost(self.u_prev)
+        prev_covar_cost     = self.cost_manager.covar_cost.compute_prev_covar_cost(self.sample_gen.sigma_matrix, self.u_prev, self.noise_prev)
 
         mean_prev_stage_cost     = torch.mean(prev_stage_cost)
         mean_prev_terminal_cost  = torch.mean(prev_terminal_cost)
         mean_prev_centering_cost = torch.mean(prev_centering_cost)
+        mean_prev_tracking_cost  = torch.mean(prev_tracking_cost)
         mean_prev_action_cost    = torch.mean(prev_action_cost)
+        mean_prev_covar_cost     = torch.mean(prev_covar_cost)
 
         self.matlab_logger.log("end_effector_pose", [self.sim_time.time] + self.ee_pose.np_pose.tolist() + self.ee_pose.np_rpy.tolist())
         self.matlab_logger.log("pos_err", [self.sim_time.time] + (self.ee_pose.np_pose - self.target_pose.np_pose).tolist())
@@ -237,7 +243,9 @@ class MPPI():
         self.matlab_logger.log("cost", [self.sim_time.time] + [mean_prev_stage_cost.item(),
                                                                mean_prev_terminal_cost.item(),
                                                                mean_prev_centering_cost.item(),
-                                                               mean_prev_action_cost.item()])
+                                                               mean_prev_tracking_cost.item(),
+                                                               mean_prev_action_cost.item(),
+                                                               mean_prev_covar_cost.item()])
         return
     
 

@@ -10,7 +10,7 @@ from mppi_solver.src.utils.rotation_conversions import euler_angles_to_matrix
 from collections import deque
 from rclpy.logging import get_logger
 
-class SatellitePoseKalmanFilter(ExtendedKalmanFilter):
+class PoseKalmanFilter(ExtendedKalmanFilter):
     """
     x = [x, y, z, r, p, y]
     u = [dx, dy, dz, dr, dp, dy]
@@ -32,10 +32,10 @@ class SatellitePoseKalmanFilter(ExtendedKalmanFilter):
 
         self.range_std = 5.
         self.R = np.eye(self.n_z, dtype=np.float32) * (self.range_std ** 2)
-        self.Q = Q_discrete_white_noise(dim=3, dt=self.dt, block_size=2) * 0.1
+        self.Q = Q_discrete_white_noise(dim=3, dt=self.dt, block_size=2) * 0.01
         self.F = np.eye(self.n_x, dtype=np.float32)
 
-        self.u_deque = deque(maxlen=7)
+        self.u_deque = deque(maxlen=32)
         self.u_deque.append(np.array([0,0,0,0,0,0], dtype=np.float32))
         self.u_mean = np.zeros(self.n_u, dtype=np.float32)
 
@@ -91,7 +91,6 @@ class SatellitePoseKalmanFilter(ExtendedKalmanFilter):
             
         self.update_pose.pose = torch.from_numpy(self.x[0:3]).to(dtype=torch.float32)
         self.update_pose.from_rotataion_matrix(euler_angles_to_matrix(torch.from_numpy(self.x[3:6]), "XYZ").to(dtype=torch.float32))
-
         return self.update_pose
 
 

@@ -36,7 +36,7 @@ class CostManager:
         self.covar_weight = 0.1
 
         # Action Cost Weights
-        self.action_weight = 0.1
+        self.action_weight = 0.01
 
         # Joint Space Cost Weights
         self.centering_cost = 1.0
@@ -78,12 +78,12 @@ class CostManager:
     def compute_all_cost(self):
         S = torch.zeros((self.n_sample), device = self.device)
 
-        S+=self.pose_cost.compute_stage_cost(self.eef_trajectories, self.target).sum(dim=1)
-        S+=self.pose_cost.compute_terminal_cost(self.eef_trajectories, self.target)
-        # S+=self.covar_cost.compute_covar_cost(self.sigma_matrix, self.u, self.v)
-        # S+=self.joint_cost.compute_centering_cost(self.qSamples)
-        # S+=self.joint_cost.compute_jointTraj_cost(self.qSamples, self.joint_trajectories)
-        # S+=self.action_cost.compute_action_cost(self.uSamples)
+        S += self.pose_cost.compute_stage_cost(self.eef_trajectories, self.target)
+        S += self.pose_cost.compute_terminal_cost(self.eef_trajectories, self.target)
+        S += self.covar_cost.compute_covar_cost(self.sigma_matrix, self.u, self.v)
+        S += self.joint_cost.compute_centering_cost(self.qSamples)
+        S += self.joint_cost.compute_jointTraj_cost(self.qSamples, self.joint_trajectories)
+        S += self.action_cost.compute_action_cost(self.uSamples)
 
         return S
     

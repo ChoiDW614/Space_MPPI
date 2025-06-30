@@ -21,7 +21,7 @@ class PoseCost():
         self.terminal_orientation_weight = terminal_orientation_weight
         
 
-    def compute_stage_cost(self, eefTraj, target_pose):
+    def compute_stage_cost(self, eefTraj, target_pose) -> torch.Tensor:
         ee_sample_pose = eefTraj[:,:-1,0:3,3].clone()
         ee_sample_orientation = eefTraj[:,:-1,0:3,0:3].clone()
         
@@ -38,10 +38,11 @@ class PoseCost():
         gamma = self.gamma ** torch.arange(self.n_horizen-1, device=self.device)
         stage_cost = stage_cost * gamma
 
+        stage_cost = torch.sum(stage_cost, dim=1)
         return stage_cost
 
 
-    def compute_terminal_cost(self, eefTraj, target_pose):
+    def compute_terminal_cost(self, eefTraj, target_pose) -> torch.Tensor:
         ee_sample_pose = eefTraj[:,-1,0:3,3].clone()
         ee_sample_orientation = eefTraj[:,-1,0:3,0:3].clone()
 
@@ -60,7 +61,7 @@ class PoseCost():
         return terminal_cost
    
 
-    def compute_prev_stage_cost(self, ee, target_pose: Pose):
+    def compute_prev_stage_cost(self, ee, target_pose: Pose) -> torch.Tensor:
         ee_sample_pose = ee[:,0:3,3]
         ee_sample_orientation = ee[:,0:3,0:3]
 
@@ -77,7 +78,7 @@ class PoseCost():
         return stage_cost
 
 
-    def compute_prev_terminal_cost(self, eefTraj, target_pose: Pose):
+    def compute_prev_terminal_cost(self, eefTraj, target_pose: Pose) -> torch.Tensor:
         ee_terminal_pose = eefTraj[-1,0:3,3]
         ee_terminal_orientation = eefTraj[-1,0:3,0:3]
 
