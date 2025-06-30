@@ -1,0 +1,34 @@
+controller_manager:
+  ros__parameters:
+    update_rate: 100
+
+    floating_canadarm_joint_controller:
+      type: effort_controllers/JointGroupEffortController
+
+    canadarm_joint_state_broadcaster:
+      type: joint_state_broadcaster/JointStateBroadcaster
+
+
+
+floating_canadarm_joint_controller:
+  ros__parameters:
+    joints:
+      - v_x_joint
+      - v_y_joint
+      - v_z_joint
+      - v_r_joint
+      - v_p_joint
+      - v_yaw_joint
+      - Base_Joint
+      - Shoulder_Roll
+      - Shoulder_Yaw
+      - Elbow_Pitch
+      - Wrist_Pitch
+      - Wrist_Yaw
+      - Wrist_Roll
+    command_interfaces:
+      - position 
+    state_interfaces:
+      - position
+      - velocity
+      - effort

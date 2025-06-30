@@ -1,0 +1,27 @@
+controller_manager:
+  ros__parameters:
+    update_rate: 100
+
+    franka_joint_controller:
+      type: effort_controllers/JointGroupEffortController
+
+    franka_joint_state_broadcaster:
+      type: joint_state_broadcaster/JointStateBroadcaster
+
+
+franka_joint_controller:
+  ros__parameters:
+    joints:
+      - panda_joint1
+      - panda_joint2
+      - panda_joint3
+      - panda_joint4
+      - panda_joint5
+      - panda_joint6
+      - panda_joint7
+    command_interfaces:
+      - position 
+    state_interfaces:
+      - position
+      - velocity
+      - effort

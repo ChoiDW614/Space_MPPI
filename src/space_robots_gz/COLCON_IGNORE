@@ -1,0 +1,3 @@
+The gazebo simulation of the space robot is built in docker.
+
+It can not be built using ative colcon.

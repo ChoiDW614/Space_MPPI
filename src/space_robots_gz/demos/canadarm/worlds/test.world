@@ -1,0 +1,131 @@
+<sdf version="1.8">
+  <world name="default">
+    <physics name="1ms" type="ignored">
+      <max_step_size>0.001</max_step_size>
+      <real_time_factor>1.0</real_time_factor>
+    </physics>
+    <plugin
+      filename="libignition-gazebo-physics-system.so"
+      name="ignition::gazebo::systems::Physics">
+    </plugin>
+    <plugin
+      filename="ignition-gazebo-user-commands-system"
+      name="ignition::gazebo::systems::UserCommands">
+    </plugin>
+    <plugin
+      filename="libignition-gazebo-scene-broadcaster-system.so"
+      name="ignition::gazebo::systems::SceneBroadcaster">
+    </plugin>
+    <plugin
+      filename="gz-sim-apply-link-wrench-system" 
+      name="gz::sim::systems::ApplyLinkWrench">
+    </plugin>
+
+
+    <gui fullscreen="0">
+      <plugin filename="GzScene3D" name="3D View">
+        <ignition-gui>
+          <title>3D View</title>
+          <property type="bool" key="showTitleBar">true</property>
+          <property type="string" key="state">docked</property>
+        </ignition-gui>
+        <engine>ogre2</engine>
+        <scene>scene</scene>
+        <background_color>0.0 0.0 0.0</background_color>
+      </plugin>
+      <plugin filename="ImageDisplay" name="Image Display 1">
+        <ignition-gui>
+          <title>Image Display 1</title>
+          <property type="string" key="state">floating</property>
+        </ignition-gui>
+        <topic>/SSRMS_camera/ee/image_raw</topic>
+      </plugin>
+      <!-- <plugin filename="ImageDisplay" name="Image Display 2">
+        <ignition-gui>
+          <title>Image Display 2</title>
+          <property type="string" key="state">docked</property>
+        </ignition-gui>
+        <topic>/SSRMS_camera/base/image_raw</topic>
+      </plugin> -->
+    </gui>
+
+    <light type="directional" name="sun">
+      <cast_shadows>true</cast_shadows>
+      <pose>0 -10 10 0 0 0</pose>
+      <diffuse>0.8 0.8 0.8 1</diffuse>
+      <specular>0.2 0.2 0.2 1</specular>
+      <attenuation>
+        <range>1000</range>
+        <constant>0.9</constant>
+        <linear>0.01</linear>
+        <quadratic>0.001</quadratic>
+      </attenuation>
+      <direction>10 10 -0.9</direction>
+    </light>
+    <gravity>0 0 0</gravity>
+
+    <model name="earth">
+        <pose>170 0 -50 0 0 -1.5708</pose>
+        <static>1</static>
+        <link name='link'>
+          <inertial>
+            <mass>0.25</mass>
+            <inertia>
+              <ixx>1</ixx>
+              <ixy>0.000</ixy>
+              <ixz>0.000</ixz>
+              <iyy>1</iyy>
+              <iyz>0.000</iyz>
+              <izz>1</izz>
+            </inertia>
+          </inertial>
+          <visual name='visual'>
+            <geometry>
+              <mesh>
+                <uri>model://canadarm/meshes/earth.dae</uri>
+                <scale>3 3 3</scale>
+              </mesh>
+            </geometry>
+          </visual>
+          <velocity_decay>
+            <linear>0.000000</linear>
+            <angular>0.000000</angular>
+          </velocity_decay>
+          <self_collide>0</self_collide>
+          <kinematic>0</kinematic>
+          <gravity>0</gravity>        
+        </link>   
+    </model>
+
+  <model name='moving_box'>
+    <link name='box_link'>
+      <pose>0 0 0 0 0 0</pose>
+      <visual name='visual'>
+        <geometry>
+          <box>
+            <size>0.1 0.1 0.1</size>
+            <!-- <size>0.5 0.5 0.5</size> -->
+          </box>
+        </geometry>
+        <material>
+          <ambient>0 0 0 1</ambient>
+          <diffuse>0 0 0 1</diffuse>
+          <specular>0 0 0 0</specular>
+          <emissive>0 1 0 1</emissive>
+        </material>
+      </visual>
+      <collision name='collision'>
+        <geometry>
+          <box>
+            <size>0.1 0.1 0.1</size>
+            <!-- <size>0.5 0.5 0.5</size> -->
+          </box>
+        </geometry>
+      </collision>
+      <!-- Mark as kinematic to allow manual pose setting -->
+      <kinematic>true</kinematic>
+    </link>
+  </model> 
+
+  </world>
+</sdf>
