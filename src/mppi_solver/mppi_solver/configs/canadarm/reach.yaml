@@ -5,7 +5,7 @@ ros2_node:
 mppi:
   package_name: "mppi_solver"
   horizon: 32
-  samples: 1000
+  sample: 1000
   action: 7
   dt: 0.01
   isBaseMoving: False
@@ -32,4 +32,13 @@ cost:
   joint_space:
     centering_weight: 1.0
     tracking_weight: 0.05
-    
+
+sample:
+  sigma_scale: 1.0
+  kappa: 0.005
+  sigma_update: true
+  sigma_update_type: "CMA_ES"
+  standard:
+    step_size_cov: 0.2
+  CMA-ES:
+

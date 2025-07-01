@@ -16,7 +16,7 @@ from ament_index_python.packages import get_package_share_directory
 
 # Sampling Library
 # from mppi_solver.src.solver.sampling.gaussian_noise import GaussianSample
-from mppi_solver.src.solver.sampling.standard_normal_noise import StandardSamplling
+from mppi_solver.src.solver.sampling.standard_normal_noise import StandardSampling
 
 # Cost Library
 from mppi_solver.src.solver.cost.cost_manager import CostManager
@@ -56,7 +56,7 @@ class MPPI():
         self.n_action = self.params['mppi']['action']
         self.n_manipulator_dof = self.params['mppi']['manipulator_dof']
         self.n_mobile_dof = self.params['mppi']['mobile_dof']
-        self.n_samples = self.params['mppi']['samples']
+        self.n_samples = self.params['mppi']['sample']
         self.n_horizen = self.params['mppi']['horizon']
         self.dt = self.params['mppi']['dt']
 
@@ -81,7 +81,7 @@ class MPPI():
         self.action_buffer = torch.zeros((self.buffer_size, self.n_samples, self.n_horizen, self.n_action), device=self.device)
 
         # Sampling class
-        self.sample_gen = StandardSamplling(self.params, self.device)
+        self.sample_gen = StandardSampling(self.params, self.device)
 
         # base control states
         self.base_pose = Pose()
@@ -177,11 +177,11 @@ class MPPI():
         w = self.compute_weights(S, self._lambda)
         w_expanded = w.view(-1, 1, 1)
         w_eps = torch.sum(w_expanded * noise, dim = 0)
-        w_eps = self.svg_filter.savgol_filter_torch(w_eps,window_size=9, polyorder=2)
+        w_eps = self.svg_filter.savgol_filter_torch(w_eps, window_size=9, polyorder=2)
 
         u += w_eps
 
-        # self.sample_gen.update_distribution(u, w_expanded, noise)
+        self.sample_gen.update_distribution(u, v, w, noise)
 
         self.u_prev = u.clone()
         self.u = u[0].clone()

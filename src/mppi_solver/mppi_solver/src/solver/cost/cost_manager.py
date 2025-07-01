@@ -18,7 +18,7 @@ class CostManager:
 
         # MPPI Parameter
         self.device = device
-        self.n_sample = params['mppi']['samples']
+        self.n_sample = params['mppi']['sample']
         self.n_horizon = params['mppi']['horizon']
         self.n_action = params['mppi']['action']
         self._lambda = params['mppi']['_lambda']
