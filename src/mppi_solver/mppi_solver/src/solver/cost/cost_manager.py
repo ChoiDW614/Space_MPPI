@@ -13,40 +13,29 @@ from mppi_solver.src.utils.pose import Pose
 from rclpy.logging import get_logger
 
 class CostManager:
-    def __init__(self, n_sample, n_horizon, n_action, _lambda, device):
+    def __init__(self, params, device):
         self.logger = get_logger("Cost_Manager")
 
         # MPPI Parameter
         self.device = device
-        self.n_sample = n_sample
-        self.n_horizon = n_horizon
-        self.n_action = n_action
-        self._lambda = _lambda
-        self.alpha = 0.1
-        self.gamma = 0.98
+        self.n_sample = params['mppi']['samples']
+        self.n_horizon = params['mppi']['horizon']
+        self.n_action = params['mppi']['action']
+        self._lambda = params['mppi']['_lambda']
+        self.alpha = params['mppi']['alpha']
+        self.gamma = params['mppi']['gamma']
 
         ## Weights
-        # Pose Cost Weights
-        self.stage_pose_weight = 20.0
-        self.stage_orientation_weight = 10.0
-        self.terminal_pose_weight = 40.0
-        self.terminal_orientation_weight = 50.0
-
-        # Covariance Cost Weights
-        self.covar_weight = 0.1
-
-        # Action Cost Weights
-        self.action_weight = 0.01
-
-        # Joint Space Cost Weights
-        self.centering_cost = 1.0
-        self.joint_tracking_weight = 1.0
+        self.pose_cost_weights = params['cost']['pose']             # Pose Cost Weights
+        self.covar_weights = params['cost']['covariance']           # Covariance Cost Weights
+        self.action_weights = params['cost']['action']              # Action Cost Weights
+        self.joint_space_weights = params['cost']['joint_space']    # Joint Space Cost Weights
 
         # Cost Library
-        self.pose_cost = PoseCost(self.stage_pose_weight, self.stage_orientation_weight, self.terminal_pose_weight, self.terminal_orientation_weight, self.gamma, self.n_horizon, self.device)
-        self.covar_cost = CovarCost(self.covar_weight, self._lambda, self.alpha, self.device)
-        self.action_cost = ActionCost(self.action_weight, self.gamma, self.n_horizon, self.device)
-        self.joint_cost = JointSpaceCost(self.centering_cost, self.joint_tracking_weight, self.gamma, self.n_horizon, self.device)
+        self.pose_cost = PoseCost(self.pose_cost_weights, self.gamma, self.n_horizon, self.device)
+        self.covar_cost = CovarCost(self.covar_weights, self._lambda, self.alpha, self.device)
+        self.action_cost = ActionCost(self.action_weights, self.gamma, self.n_horizon, self.device)
+        self.joint_cost = JointSpaceCost(self.joint_space_weights, self.gamma, self.n_horizon, self.device)
 
         # For Pose Cost
         self.target : Pose
@@ -80,8 +69,8 @@ class CostManager:
 
         S += self.pose_cost.compute_stage_cost(self.eef_trajectories, self.target)
         S += self.pose_cost.compute_terminal_cost(self.eef_trajectories, self.target)
-        S += self.covar_cost.compute_covar_cost(self.sigma_matrix, self.u, self.v)
-        S += self.joint_cost.compute_centering_cost(self.qSamples)
+        # S += self.covar_cost.compute_covar_cost(self.sigma_matrix, self.u, self.v)
+        # S += self.joint_cost.compute_centering_cost(self.qSamples)
         S += self.joint_cost.compute_jointTraj_cost(self.qSamples, self.joint_trajectories)
         S += self.action_cost.compute_action_cost(self.uSamples)
 

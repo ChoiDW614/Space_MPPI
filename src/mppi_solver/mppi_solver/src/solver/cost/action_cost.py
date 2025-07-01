@@ -2,13 +2,13 @@ import torch
 from rclpy.logging import get_logger
 
 class ActionCost:
-    def __init__(self, action_weight, gamma, n_horizon, device):
+    def __init__(self, params, gamma, n_horizon, device):
         self.logger = get_logger("Action_Cost")
         self.device = device
 
         self.n_horizon = n_horizon
 
-        self.action_weight = action_weight
+        self.action_weight = params['weight']
         self.gamma = gamma
 
 

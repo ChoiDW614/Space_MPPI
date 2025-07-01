@@ -8,6 +8,7 @@ from datetime import datetime
 # Linear Algebra
 import numpy as np
 import torch
+import torch.nn.functional as F
 
 # RCLPY 
 from rclpy.logging import get_logger
@@ -37,8 +38,11 @@ from mppi_solver.src.utils.time import Time
 
 
 class MPPI():
-    def __init__(self, isBaseMoving):
+    def __init__(self, params):
         self.logger = get_logger("MPPI")
+
+        # Load parameters
+        self.params = params
 
         # torch env
         os.environ['CUDA_DEVICE_ORDER']="PCI_BUS_ID"
@@ -48,21 +52,13 @@ class MPPI():
         torch.set_default_dtype(torch.float32)
 
         # Sampling parameters
-        self.isBaseMoving = isBaseMoving
-        if self.isBaseMoving:
-            self.n_action = 13
-            self.n_manipulator_dof = 7
-            self.n_mobile_dof = 6
-            self.n_samples = 1024
-            self.n_horizen = 64
-            self.dt = 0.01
-        else:
-            self.n_action = 7
-            self.n_manipulator_dof = 7
-            self.n_mobile_dof = 0
-            self.n_samples = 1000
-            self.n_horizen = 32
-            self.dt = 0.01
+        self.isBaseMoving = self.params['mppi']['isBaseMoving']
+        self.n_action = self.params['mppi']['action']
+        self.n_manipulator_dof = self.params['mppi']['manipulator_dof']
+        self.n_mobile_dof = self.params['mppi']['mobile_dof']
+        self.n_samples = self.params['mppi']['samples']
+        self.n_horizen = self.params['mppi']['horizon']
+        self.dt = self.params['mppi']['dt']
 
         # Manipulator states
         self._q = torch.zeros(self.n_action, device=self.device)
@@ -85,7 +81,7 @@ class MPPI():
         self.action_buffer = torch.zeros((self.buffer_size, self.n_samples, self.n_horizen, self.n_action), device=self.device)
 
         # Sampling class
-        self.sample_gen = StandardSamplling(self.n_samples, self.n_horizen, self.n_action, self.device)
+        self.sample_gen = StandardSamplling(self.params, self.device)
 
         # base control states
         self.base_pose = Pose()
@@ -99,11 +95,11 @@ class MPPI():
         self.diff_ori_3d = torch.zeros((3), device=self.device)
 
         # MPPI Cost Manager
-        self._lambda = 0.1
-        self.cost_manager = CostManager(self.n_samples, self.n_horizen, self.n_action, self._lambda, self.device)
+        self._lambda = params['mppi']['_lambda']
+        self.cost_manager = CostManager(self.params, self.device)
 
         # Import URDF for forward kinematics
-        package_name = "mppi_solver"
+        package_name = params['mppi']['package_name']
         if self.isBaseMoving:
             urdf_file_path = os.path.join(get_package_share_directory(package_name), "models", "canadarm", "floating_canadarm_camera.urdf")
         else:
@@ -136,6 +132,7 @@ class MPPI():
         self.matlab_logger.create_dataset(dataset_name="pos_err", shape=4)
         self.matlab_logger.create_dataset(dataset_name="ori_err", shape=4)
         self.matlab_logger.create_dataset(dataset_name="cost", shape=7)
+        self.matlab_logger.create_dataset(dataset_name="sigma", shape=(self.n_action+1))
 
         self.reference_joint = None
         self.reference_se3 = None
@@ -151,8 +148,8 @@ class MPPI():
         diff_ori_quat = matrix_to_quaternion(diff_ori_mat)
         self.diff_ori_3d = matrix_to_euler_angles(diff_ori_mat, "ZYX")
 
-        self.logger.info(f"Pose Err : {pose_err}")
-        self.logger.info(f"Ori Err : {self.diff_ori_3d}")
+        # self.logger.info(f"Pose Err : {pose_err}")
+        # self.logger.info(f"Ori Err : {self.diff_ori_3d}")
 
         if pose_err < 0.005:
             return True
@@ -178,11 +175,13 @@ class MPPI():
         S = self.cost_manager.compute_all_cost()
 
         w = self.compute_weights(S, self._lambda)
-        w_expanded = w.view(-1, 1,1)
+        w_expanded = w.view(-1, 1, 1)
         w_eps = torch.sum(w_expanded * noise, dim = 0)
-        w_eps = self.svg_filter.savgol_filter_torch(w_eps,window_size=9,polyorder=2)
+        w_eps = self.svg_filter.savgol_filter_torch(w_eps,window_size=9, polyorder=2)
 
         u += w_eps
+
+        # self.sample_gen.update_distribution(u, w_expanded, noise)
 
         self.u_prev = u.clone()
         self.u = u[0].clone()
@@ -194,25 +193,9 @@ class MPPI():
         return self.qdes, self.vdes
 
 
-    def compute_weights(self,  S: torch.Tensor, _lambda) -> torch.Tensor:
-        """
-        Compute weights for each sample in a batch using PyTorch.
-        
-        Args:
-            S (torch.Tensor): Tensor of shape (batch_size,) containing the scores (costs) for each sample.
-
-        Returns:
-            torch.Tensor: Tensor of shape (batch_size,) containing the computed weights.
-        """
-        # 최소값 계산 (rho)
-        rho = S.min()  # (scalar)
-
-        # eta 계산
-        scaled_S = (-1.0 / _lambda) * (S - rho)  # (batch_size,)
-        eta = torch.exp(scaled_S).sum()  # (scalar)
-
-        # 각 샘플의 weight 계산
-        weights = torch.exp(scaled_S) / eta  # (batch_size,)
+    def compute_weights(self, S: torch.Tensor, _lambda: float) -> torch.Tensor:
+        z = -S / _lambda
+        weights = torch.softmax(z, dim=0)  # (n_samples,)
         return weights
     
 
@@ -246,6 +229,7 @@ class MPPI():
                                                                mean_prev_tracking_cost.item(),
                                                                mean_prev_action_cost.item(),
                                                                mean_prev_covar_cost.item()])
+        self.matlab_logger.log("sigma", [self.sim_time.time] + torch.diag(self.sample_gen.sigma).tolist())
         return
     
 

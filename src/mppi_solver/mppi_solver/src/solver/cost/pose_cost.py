@@ -8,17 +8,17 @@ from mppi_solver.src.utils.rotation_conversions import euler_angles_to_matrix, m
 from rclpy.logging import get_logger
 
 class PoseCost():
-    def __init__(self, stage_pose_weight, stage_orientation_weight, terminal_pose_weight, terminal_orientation_weight, gamma, n_horizen, device):
+    def __init__(self, params, gamma, n_horizen, device):
         self.logger = get_logger("PoseCost")
         self.device = device
         self.n_horizen = n_horizen
         self.gamma = gamma
 
-        self.stage_pose_weight = stage_pose_weight
-        self.stage_orientation_weight = stage_orientation_weight
+        self.stage_pose_weight = params['stage_pose_weight']
+        self.stage_orientation_weight = params['stage_orientation_weight']
         
-        self.terminal_pose_weight = terminal_pose_weight
-        self.terminal_orientation_weight = terminal_orientation_weight
+        self.terminal_pose_weight = params['terminal_pose_weight']
+        self.terminal_orientation_weight = params['terminal_orientation_weight']
         
 
     def compute_stage_cost(self, eefTraj, target_pose) -> torch.Tensor:

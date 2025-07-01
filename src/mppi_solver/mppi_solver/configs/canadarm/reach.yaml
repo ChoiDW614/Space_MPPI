@@ -1,0 +1,35 @@
+ros2_node:
+  cal_timer_period: 0.01
+  pub_timer_period: 0.01
+
+mppi:
+  package_name: "mppi_solver"
+  horizon: 32
+  samples: 1000
+  action: 7
+  dt: 0.01
+  isBaseMoving: False
+  alpha: 0.1
+  gamma: 0.98
+  _lambda: 0.1
+  manipulator_dof: 7
+  mobile_dof: 0
+  sigma_scale: 0.3
+
+cost:
+  pose:
+    stage_pose_weight: 40.0
+    stage_orientation_weight: 125.0
+    terminal_pose_weight: 75.0
+    terminal_orientation_weight: 250.0
+
+  covariance: 
+    weight: 0.005
+
+  action:
+    weight: 0.0005
+  
+  joint_space:
+    centering_weight: 1.0
+    tracking_weight: 0.05
+    

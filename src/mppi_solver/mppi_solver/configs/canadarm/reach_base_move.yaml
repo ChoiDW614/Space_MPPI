@@ -1,0 +1,32 @@
+ros2_node:
+  cal_timer_period: 0.01
+  pub_timer_period: 0.01
+
+mppi:
+  horizon: 32
+  samples: 1000
+  action: 13
+  dt: 0.01
+  isBaseMoving: True
+  alpha: 0.1
+  gamma: 0.98
+  _lambda: 0.1
+  manipulator_dof: 7
+  mobile_dof: 6
+
+cost:
+  pose:
+    stage_pose_weight: 20.0
+    stage_orientation_weight: 10.0
+    terminal_pose_weight: 40.0
+    terminal_orientation_weight: 50.0
+
+  covariance: 
+    weight: 0.01
+
+  action:
+    weight: 0.001
+  
+  joint_space:
+    centering_wight: 1.0
+    tracking_wight: 1.0

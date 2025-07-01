@@ -1,27 +1,35 @@
+# Python imports
+import os
+import yaml
+import math
+import time
+from copy import deepcopy
+
+# Linear Algebra
+import numpy as np
+import torch
+
+# RCLPY
 import rclpy
 from rclpy.node import Node
 from rclpy._rclpy_pybind11 import RCLError
+from ament_index_python.packages import get_package_share_directory
 
 from rclpy.qos import QoSProfile
 from rclpy.qos import QoSHistoryPolicy
 from rclpy.qos import DurabilityPolicy
 from rclpy.qos import ReliabilityPolicy
 
+# ROS2 Messages
 from control_msgs.msg import DynamicJointState
 from geometry_msgs.msg import TransformStamped, PoseStamped
 from std_msgs.msg import Float64MultiArray, Bool
 from rosgraph_msgs.msg import Clock
 
-import math
-import numpy as np
-import torch
-
-# from mppi_solver.src.solver.mppi_canadarm import MPPI
-# from mppi_solver.src.solver.mppi_canadarm_weight_test import MPPI
+# MPPI Solver Library
 from mppi_solver.src.solver.mppi_canadarm import MPPI
 from mppi_solver.src.solver.target.kalman_target_state import DockingInterface
 from mppi_solver.src.utils.time import Time
-
 
 from mppi_solver.src.utils.pose import Pose
 from mppi_solver.src.utils.rotation_conversions import matrix_to_euler_angles
@@ -30,11 +38,11 @@ from mppi_solver.src.wrapper.canadarm_wrapper import CanadarmWrapper
 from mppi_solver.src.trajectory.trajManager import SE3Traj
 from mppi_solver.src.robot.ik.canadarm_ik import IKSolver
 
+# Pinocchio Library
 import pinocchio as pin
 from pinocchio.utils import *
-from copy import deepcopy
-import time
 
+# Logger : MATLAB for Plot
 from pathlib import Path
 from mppi_solver.src.utils.matlab_logger import MATLABLogger
 
@@ -43,11 +51,21 @@ class MppiSolverNode(Node):
     def __init__(self):
         super().__init__("mppi_solver_node")
 
+        # Load Yaml Config
+        self.package_name = "mppi_solver"
+        config_path = os.path.join(get_package_share_directory(self.package_name), "configs", "canadarm", "reach.yaml")
+        try:
+            with open(config_path, "r") as file:
+                params = yaml.load(file, Loader=yaml.FullLoader)
+        except FileNotFoundError:
+            self.get_logger().error(f"Config file not found: {config_path}")
+            raise RCLError(f"Config file not found: {config_path}")
+
         # ROBOT
         self.canadarmWrapper = CanadarmWrapper()
 
         # joint control states
-        self.isBaseMoving = False
+        self.isBaseMoving = params['mppi']['isBaseMoving']
         if self.isBaseMoving:
             self.joint_order = [
                 "v_x_joint", "v_y_joint", "v_z_joint", "v_r_joint", "v_p_joint", "v_yaw_joint",
@@ -62,7 +80,7 @@ class MppiSolverNode(Node):
         self.vdes = np.zeros(7)
 
         # controller
-        self.controller = MPPI(isBaseMoving=self.isBaseMoving)
+        self.controller = MPPI(params)
 
         # target states
         self.is_sim_ros2_connected = False

@@ -4,7 +4,7 @@ import torch
 from rclpy.logging import get_logger
 
 class CovarCost:
-    def __init__(self, covar_weight, _lambda, alpha, device):
+    def __init__(self, params, _lambda, alpha, device):
         self.logger = get_logger("Covar_Cost")
         self.device = device
         
@@ -14,7 +14,7 @@ class CovarCost:
         self.param_gamma = self._lambda * (1.0 - self.alpha)  # constant parameter of mppi
 
         # Weight
-        self.covar_weight = covar_weight
+        self.covar_weight = params['weight']
 
 
     def compute_covar_cost(self, sigma_matrix, u, v):

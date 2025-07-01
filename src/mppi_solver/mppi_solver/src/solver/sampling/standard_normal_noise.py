@@ -4,19 +4,25 @@ from rclpy.logging import get_logger
 
 
 class StandardSamplling:
-    def __init__(self, n_sample : int, n_horizon : int, n_action : int, device):
+    def __init__(self, params, device):
         self.logger = get_logger("Standard_Sampling")
 
         # Torch GPU
         self.device = device
 
         # Sampling Parameter
-        self.n_sample = n_sample
-        self.n_horizon = n_horizon
-        self.n_action = n_action
-        self.sigma = torch.eye((self.n_action), device = self.device) * 0.3
+        self.n_sample  = params['mppi']['samples']
+        self.n_horizon = params['mppi']['horizon']
+        self.n_action  = params['mppi']['action']
+        self.sigma_scale = params['mppi']['sigma_scale']
+        self.sigma = torch.eye((self.n_action), device = self.device) * self.sigma_scale
+        self.init_sigma = self.sigma.clone()
 
         self.sigma_matrix = self.sigma.expand(self.n_sample, self.n_horizon, -1, -1)
+
+        # Update Parameter
+        self.step_size_cov  = 0.05
+        self.kappa = 0.005
 
 
     def sampling(self):
@@ -52,3 +58,15 @@ class StandardSamplling:
         q = torch.cumsum(dq, dim=0) + q0
         return q.unsqueeze(0)
     
+
+    def update_distribution(self, actions: torch.Tensor, weights: torch.Tensor, noise: torch.Tensor):
+        delta = actions - noise.unsqueeze(0)
+        weighted_delta = weights * (delta ** 2)
+        cov_update = torch.mean(torch.sum(weighted_delta, dim=0), dim=0)
+
+        cov_update_mat = torch.diag(cov_update)
+        self.sigma = (1 - self.step_size_cov) * self.sigma + self.step_size_cov * cov_update_mat
+        self.sigma += self.kappa * torch.eye(self.n_action, device=self.device)
+        self.sigma_matrix = self.sigma.expand(self.n_sample, self.n_horizon, -1, -1)
+
+        self.logger.info(f"Updated Sigma: {torch.diag(self.sigma)}")
