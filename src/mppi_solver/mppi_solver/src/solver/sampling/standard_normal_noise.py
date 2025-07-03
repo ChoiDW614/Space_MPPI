@@ -45,7 +45,7 @@ class StandardSampling:
             if params['sample']['sigma_update_type'] == "standard":
                 self.update_fn = self.update_distribution_standard
                 # Standard Parameter
-                self.step_size_cov = params['sample']['step_size_cov']
+                self.step_size_cov = params['sample']['standard']['step_size_cov']
         return
 
 
@@ -110,6 +110,7 @@ class StandardSampling:
         Returns:
             None: Updates self.sigma and self.sigma_matrix in place.
         """
+        w = w.view(-1, 1, 1)
         delta = u - noise.unsqueeze(0)
         weighted_delta = w * (delta ** 2)
         cov_update = torch.mean(torch.sum(weighted_delta, dim=0), dim=0)

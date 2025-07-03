@@ -30,6 +30,8 @@ from rosgraph_msgs.msg import Clock
 from mppi_solver.src.solver.mppi_canadarm import MPPI
 from mppi_solver.src.solver.target.kalman_target_state import DockingInterface
 from mppi_solver.src.utils.time import Time
+from mppi_solver.src.utils.config_loader import load_config
+from mppi_solver.src.utils.get_param import GetParamClientAsync
 
 from mppi_solver.src.utils.pose import Pose
 from mppi_solver.src.utils.rotation_conversions import matrix_to_euler_angles
@@ -50,45 +52,43 @@ from mppi_solver.src.utils.matlab_logger import MATLABLogger
 class MppiSolverNode(Node):
     def __init__(self):
         super().__init__("mppi_solver_node")
+        self.package_name = "mppi_solver"
 
         # Load Yaml Config
-        self.package_name = "mppi_solver"
-        config_path = os.path.join(get_package_share_directory(self.package_name), "configs", "canadarm", "reach.yaml")
-        try:
-            with open(config_path, "r") as file:
-                params = yaml.load(file, Loader=yaml.FullLoader)
-        except FileNotFoundError:
-            self.get_logger().error(f"Config file not found: {config_path}")
-            raise RCLError(f"Config file not found: {config_path}")
+        self.param_client = GetParamClientAsync('/mppi_controller_node')
+        response = self.param_client.send_request(['config_file'])
+        if response is not None:
+            config_name = response.values[0].string_value
+        else:
+            config_name = 'reach.yaml'
+        self._logger.info(f"config_name: {config_name}")
+        params = load_config(self.package_name, config_name)
 
         # ROBOT
-        self.canadarmWrapper = CanadarmWrapper()
+        self.canadarmWrapper = CanadarmWrapper(params)
 
-        # joint control states
-        self.isBaseMoving = params['mppi']['isBaseMoving']
-        if self.isBaseMoving:
-            self.joint_order = [
-                "v_x_joint", "v_y_joint", "v_z_joint", "v_r_joint", "v_p_joint", "v_yaw_joint",
-                "Base_Joint", "Shoulder_Roll", "Shoulder_Yaw", "Elbow_Pitch", "Wrist_Pitch", "Wrist_Yaw", "Wrist_Roll"]
-        else:
-            self.joint_order = [
-                "Base_Joint", "Shoulder_Roll", "Shoulder_Yaw", "Elbow_Pitch", "Wrist_Pitch", "Wrist_Yaw", "Wrist_Roll"]
+        # Joint control states
+        self.joint_order = params['mppi']['joint_order']
         self.joint_names = None
         self.interface_name = None
         self.interface_values = None
         self.qdes = np.zeros(7)
         self.vdes = np.zeros(7)
 
-        # controller
+        # Controller
         self.controller = MPPI(params)
 
-        # target states
+        # Target states
         self.is_sim_ros2_connected = False
         self.docking_interface = DockingInterface(self.controller, predict_step=32)
-        self.canadarmIK = IKSolver(self.isBaseMoving)
+        self.canadarmIK = IKSolver(params)
         self.sim_time = Time()
 
-        # model state subscriber
+        # ROS2 topic name
+        self.controller_name = params['mppi']['controller_name']
+        self.arm_topic = self.controller_name + '/target_joint_states'
+
+        # Model state subscriber
         subscribe_qos_profile = QoSProfile(depth=5, reliability=ReliabilityPolicy.BEST_EFFORT, durability=DurabilityPolicy.VOLATILE)
         subscribe_qos_profile2 = QoSProfile(history=QoSHistoryPolicy.KEEP_ALL, reliability=ReliabilityPolicy.BEST_EFFORT, durability=DurabilityPolicy.VOLATILE)
         
@@ -98,13 +98,10 @@ class MppiSolverNode(Node):
         self.sim_clock_subscriber = self.create_subscription(Clock, '/world/default/clock', self.sim_clock_callback, subscribe_qos_profile)
 
         # publisher
-        cal_timer_period = 0.01  # seconds
-        pub_timer_period = 0.01  # seconds
+        cal_timer_period = params['ros2_node']['cal_timer_period'] 
+        pub_timer_period = params['ros2_node']['pub_timer_period']
         self.cal_timer = self.create_timer(cal_timer_period, self.cal_timer_callback)
         self.pub_timer = self.create_timer(pub_timer_period, self.pub_timer_callback)
-
-        self.arm_msg = Float64MultiArray()
-        self.arm_publisher = self.create_publisher(Float64MultiArray, '/canadarm_joint_controller/target_joint_states', 10)
 
         # Log
         self.matlab_logger = MATLABLogger(script_name=Path(__file__).stem, file_name="joint_states")
@@ -112,8 +109,9 @@ class MppiSolverNode(Node):
 
         # Controller MSG
         self.arm_msg = Float64MultiArray()
-        self.arm_publisher = self.create_publisher(Float64MultiArray, '/canadarm_joint_controller/target_joint_states', 10)
-        
+        self.arm_publisher = self.create_publisher(Float64MultiArray, self.arm_topic, 10)
+            
+        # Sim init flag
         self.is_reaching = False
         self.is_init_trajectory = True
         self.target = Pose()
@@ -129,8 +127,8 @@ class MppiSolverNode(Node):
 
 
     def cal_timer_callback(self):
-        if self.is_target and self.init_jointCB and (self.sim_time.time > 10.0):
-        # if self.is_target and self.init_jointCB:
+        # if self.is_target and self.init_jointCB and (self.sim_time.time > 10.0):
+        if self.is_target and self.init_jointCB:
             if self.is_init_trajectory:
 
                 targetSE3 = self.targetSE3 * self.canadarmWrapper.eef_to_tip.inverse()

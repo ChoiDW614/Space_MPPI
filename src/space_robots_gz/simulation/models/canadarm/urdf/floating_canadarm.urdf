@@ -11,6 +11,53 @@ The link CoM locations (with respect to link frame) are set to zero as the inert
 
  -->
 <robot name="SSRMS_Canadarm2">
+  <ros2_control name="IgnitionSystem" type="system">
+    <hardware>
+      <plugin>ign_ros2_control/IgnitionSystem</plugin>
+    </hardware>
+    <joint name="Base_Joint">
+      <command_interface name="effort"/>
+      <state_interface name="position"/>
+      <state_interface name="velocity"/>
+      <state_interface name="effort"/>
+    </joint>
+    <joint name="Shoulder_Roll">
+      <command_interface name="effort"/>
+      <state_interface name="position"/>
+      <state_interface name="velocity"/>
+      <state_interface name="effort"/>
+    </joint>
+    <joint name="Shoulder_Yaw">
+      <command_interface name="effort"/>
+      <state_interface name="position"/>
+      <state_interface name="velocity"/>
+      <state_interface name="effort"/>
+    </joint>
+    <joint name="Elbow_Pitch">
+      <command_interface name="effort"/>
+      <state_interface name="position"/>
+      <state_interface name="velocity"/>
+      <state_interface name="effort"/>
+    </joint>
+    <joint name="Wrist_Pitch">
+      <command_interface name="effort"/>
+      <state_interface name="position"/>
+      <state_interface name="velocity"/>
+      <state_interface name="effort"/>
+    </joint>
+    <joint name="Wrist_Yaw">
+      <command_interface name="effort"/>
+      <state_interface name="position"/>
+      <state_interface name="velocity"/>
+      <state_interface name="effort"/>
+    </joint>
+    <joint name="Wrist_Roll">
+      <command_interface name="effort"/>
+      <state_interface name="position"/>
+      <state_interface name="velocity"/>
+      <state_interface name="effort"/>
+    </joint>
+  </ros2_control>
   <gazebo>
     <plugin filename="libign_ros2_control-system" name="ign_ros2_control::IgnitionROS2ControlPlugin">
       <robot_param>robot_description</robot_param>
@@ -49,13 +96,13 @@ The link CoM locations (with respect to link frame) are set to zero as the inert
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry>
-        <mesh filename="package://mppi_controller/models/canadarm/meshes/iss.dae" scale="1.0 1.0 1.0"/>
+        <mesh filename="package://simulation/models/canadarm/meshes/iss.dae" scale="1.0 1.0 1.0"/>
       </geometry>
     </visual>
     <collision>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry>
-        <mesh filename="package://mppi_controller/models/canadarm/meshes/iss.stl" scale="1.0 1.0 1.0"/>
+        <mesh filename="package://simulation/models/canadarm/meshes/iss.stl" scale="1.0 1.0 1.0"/>
       </geometry>
     </collision>
   </link>
@@ -74,13 +121,13 @@ The link CoM locations (with respect to link frame) are set to zero as the inert
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry>
-        <mesh filename="package://mppi_controller/models/canadarm/meshes/ee.dae" scale="1.0 1.0 1.0"/>
+        <mesh filename="package://simulation/models/canadarm/meshes/ee.dae" scale="1.0 1.0 1.0"/>
       </geometry>
     </visual>
     <collision>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry>
-        <mesh filename="package://mppi_controller/models/canadarm/meshes/ee.stl" scale="1.0 1.0 1.0"/>
+        <mesh filename="package://simulation/models/canadarm/meshes/ee.stl" scale="1.0 1.0 1.0"/>
       </geometry>
     </collision>
   </link>
@@ -104,13 +151,13 @@ The link CoM locations (with respect to link frame) are set to zero as the inert
     <visual>
       <origin rpy="0 -1.5708 0" xyz="0.25082 0 -0.175"/>
       <geometry>
-        <mesh filename="package://mppi_controller/models/canadarm/meshes/joint_v3_0.dae" scale="1.0 1.0 1.0"/>
+        <mesh filename="package://simulation/models/canadarm/meshes/joint_v3_0.dae" scale="1.0 1.0 1.0"/>
       </geometry>
     </visual>
     <collision>
       <origin rpy="0 -1.5708 0" xyz="0.25082 0 -0.175"/>
       <geometry>
-        <mesh filename="package://mppi_controller/models/canadarm/meshes/joint_v3_0.stl" scale="1.0 1.0 1.0"/>
+        <mesh filename="package://simulation/models/canadarm/meshes/joint_v3_0.stl" scale="1.0 1.0 1.0"/>
       </geometry>
     </collision>
   </link>
@@ -132,13 +179,13 @@ The link CoM locations (with respect to link frame) are set to zero as the inert
     <visual>
       <origin rpy="0 0 0" xyz="0.175 0 -0.25082"/>
       <geometry>
-        <mesh filename="package://mppi_controller/models/canadarm/meshes/joint_v3_0.dae" scale="1.0 1.0 1.0"/>
+        <mesh filename="package://simulation/models/canadarm/meshes/joint_v3_0.dae" scale="1.0 1.0 1.0"/>
       </geometry>
     </visual>
     <collision>
       <origin rpy="0 0 0" xyz="0.175 0 -0.25082"/>
       <geometry>
-        <mesh filename="package://mppi_controller/models/canadarm/meshes/joint_v3_0.stl" scale="1.0 1.0 1.0"/>
+        <mesh filename="package://simulation/models/canadarm/meshes/joint_v3_0.stl" scale="1.0 1.0 1.0"/>
       </geometry>
     </collision>
   </link>
@@ -160,37 +207,37 @@ The link CoM locations (with respect to link frame) are set to zero as the inert
     <visual>
       <origin rpy="0 -1.5708 0" xyz="0.25082 0 -0.175"/>
       <geometry>
-        <mesh filename="package://mppi_controller/models/canadarm/meshes/joint_v3_0.dae" scale="1.0 1.0 1.0"/>
+        <mesh filename="package://simulation/models/canadarm/meshes/joint_v3_0.dae" scale="1.0 1.0 1.0"/>
       </geometry>
     </visual>
     <collision>
       <origin rpy="0 -1.5708 0" xyz="0.25082 0 -0.175"/>
       <geometry>
-        <mesh filename="package://mppi_controller/models/canadarm/meshes/joint_v3_0.stl" scale="1.0 1.0 1.0"/>
+        <mesh filename="package://simulation/models/canadarm/meshes/joint_v3_0.stl" scale="1.0 1.0 1.0"/>
       </geometry>
     </collision>
     <visual>
       <origin rpy="-1.5708 0 -1.5708" xyz="0.25082 0 -0.175"/>
       <geometry>
-        <mesh filename="package://mppi_controller/models/canadarm/meshes/long_link_1_v3_0.dae" scale="1.0 1.0 1.0"/>
+        <mesh filename="package://simulation/models/canadarm/meshes/long_link_1_v3_0.dae" scale="1.0 1.0 1.0"/>
       </geometry>
     </visual>
     <collision>
       <origin rpy="-1.5708 0 -1.5708" xyz="0.25082 0 -0.175"/>
       <geometry>
-        <mesh filename="package://mppi_controller/models/canadarm/meshes/long_link_1_v3_0.stl" scale="1.0 1.0 1.0"/>
+        <mesh filename="package://simulation/models/canadarm/meshes/long_link_1_v3_0.stl" scale="1.0 1.0 1.0"/>
       </geometry>
     </collision>
     <visual>
       <origin rpy="0 1.5708 0" xyz="7.36082 0 -0.175"/>
       <geometry>
-        <mesh filename="package://mppi_controller/models/canadarm/meshes/joint_v3_0.dae" scale="1.0 1.0 1.0"/>
+        <mesh filename="package://simulation/models/canadarm/meshes/joint_v3_0.dae" scale="1.0 1.0 1.0"/>
       </geometry>
     </visual>
     <collision>
       <origin rpy="0 1.5708 0" xyz="7.36082 0 -0.175"/>
       <geometry>
-        <mesh filename="package://mppi_controller/models/canadarm/meshes/joint_v3_0.stl" scale="1.0 1.0 1.0"/>
+        <mesh filename="package://simulation/models/canadarm/meshes/joint_v3_0.stl" scale="1.0 1.0 1.0"/>
       </geometry>
     </collision>
     <visual>
@@ -218,37 +265,37 @@ The link CoM locations (with respect to link frame) are set to zero as the inert
     <visual>
       <origin rpy="0 1.5708 0" xyz="-0.25082 0 -0.175"/>
       <geometry>
-        <mesh filename="package://mppi_controller/models/canadarm/meshes/link_joint_v2_1.dae" scale="1.0 1.0 1.0"/>
+        <mesh filename="package://simulation/models/canadarm/meshes/link_joint_v2_1.dae" scale="1.0 1.0 1.0"/>
       </geometry>
     </visual>
     <collision>
       <origin rpy="0 1.5708 0" xyz="-0.25082 0 -0.175"/>
       <geometry>
-        <mesh filename="package://mppi_controller/models/canadarm/meshes/link_joint_v2_1.stl" scale="1.0 1.0 1.0"/>
+        <mesh filename="package://simulation/models/canadarm/meshes/link_joint_v2_1.stl" scale="1.0 1.0 1.0"/>
       </geometry>
     </collision>
     <visual>
       <origin rpy="1.57 -3.14 1.57" xyz="-7.36082 0 -0.175"/>
       <geometry>
-        <mesh filename="package://mppi_controller/models/canadarm/meshes/long_link_2_v3_0.dae" scale="1.0 1.0 1.0"/>
+        <mesh filename="package://simulation/models/canadarm/meshes/long_link_2_v3_0.dae" scale="1.0 1.0 1.0"/>
       </geometry>
     </visual>
     <collision>
       <origin rpy="1.57 -3.14 1.57" xyz="-7.36082 0 -0.175"/>
       <geometry>
-        <mesh filename="package://mppi_controller/models/canadarm/meshes/long_link_2_v3_0.stl" scale="1.0 1.0 1.0"/>
+        <mesh filename="package://simulation/models/canadarm/meshes/long_link_2_v3_0.stl" scale="1.0 1.0 1.0"/>
       </geometry>
     </collision>
     <visual>
       <origin rpy="0 -1.57 0" xyz="-7.36082 0 -0.175"/>
       <geometry>
-        <mesh filename="package://mppi_controller/models/canadarm/meshes/joint_v3_0.dae" scale="1.0 1.0 1.0"/>
+        <mesh filename="package://simulation/models/canadarm/meshes/joint_v3_0.dae" scale="1.0 1.0 1.0"/>
       </geometry>
     </visual>
     <collision>
       <origin rpy="0 -1.57 0" xyz="-7.36082 0 -0.175"/>
       <geometry>
-        <mesh filename="package://mppi_controller/models/canadarm/meshes/joint_v3_0.stl" scale="1.0 1.0 1.0"/>
+        <mesh filename="package://simulation/models/canadarm/meshes/joint_v3_0.stl" scale="1.0 1.0 1.0"/>
       </geometry>
     </collision>
   </link>
@@ -270,13 +317,13 @@ The link CoM locations (with respect to link frame) are set to zero as the inert
     <visual>
       <origin rpy="0 -3.14 0" xyz="0 0 0"/>
       <geometry>
-        <mesh filename="package://mppi_controller/models/canadarm/meshes/joint_v3_0.dae" scale="1.0 1.0 1.0"/>
+        <mesh filename="package://simulation/models/canadarm/meshes/joint_v3_0.dae" scale="1.0 1.0 1.0"/>
       </geometry>
     </visual>
     <collision>
       <origin rpy="0 -3.14 0" xyz="0 0 0"/>
       <geometry>
-        <mesh filename="package://mppi_controller/models/canadarm/meshes/joint_v3_0.stl" scale="1.0 1.0 1.0"/>
+        <mesh filename="package://simulation/models/canadarm/meshes/joint_v3_0.stl" scale="1.0 1.0 1.0"/>
       </geometry>
     </collision>
   </link>
@@ -298,13 +345,13 @@ The link CoM locations (with respect to link frame) are set to zero as the inert
     <visual>
       <origin rpy="0 -1.5708 0" xyz="0 0 0"/>
       <geometry>
-        <mesh filename="package://mppi_controller/models/canadarm/meshes/joint_v3_0.dae" scale="1.0 1.0 1.0"/>
+        <mesh filename="package://simulation/models/canadarm/meshes/joint_v3_0.dae" scale="1.0 1.0 1.0"/>
       </geometry>
     </visual>
     <collision>
       <origin rpy="0 -1.5708 0" xyz="0 0 0"/>
       <geometry>
-        <mesh filename="package://mppi_controller/models/canadarm/meshes/joint_v3_0.stl" scale="1.0 1.0 1.0"/>
+        <mesh filename="package://simulation/models/canadarm/meshes/joint_v3_0.stl" scale="1.0 1.0 1.0"/>
       </geometry>
     </collision>
   </link>
@@ -326,13 +373,13 @@ The link CoM locations (with respect to link frame) are set to zero as the inert
     <visual>
       <origin rpy="0 -3.1415 0" xyz="0 0 0"/>
       <geometry>
-        <mesh filename="package://mppi_controller/models/canadarm/meshes/ee.dae" scale="1.0 1.0 1.0"/>
+        <mesh filename="package://simulation/models/canadarm/meshes/ee.dae" scale="1.0 1.0 1.0"/>
       </geometry>
     </visual>
     <collision>
       <origin rpy="0 -3.1415 0" xyz="0 0 0"/>
       <geometry>
-        <mesh filename="package://mppi_controller/models/canadarm/meshes/ee.stl" scale="1.0 1.0 1.0"/>
+        <mesh filename="package://simulation/models/canadarm/meshes/ee.stl" scale="1.0 1.0 1.0"/>
       </geometry>
     </collision>
   </link>

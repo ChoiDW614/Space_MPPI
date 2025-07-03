@@ -9,16 +9,9 @@ controller_manager:
       type: joint_state_broadcaster/JointStateBroadcaster
 
 
-
 floating_canadarm_joint_controller:
   ros__parameters:
     joints:
-      - v_x_joint
-      - v_y_joint
-      - v_z_joint
-      - v_r_joint
-      - v_p_joint
-      - v_yaw_joint
       - Base_Joint
       - Shoulder_Roll
       - Shoulder_Yaw

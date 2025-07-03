@@ -4,20 +4,19 @@ ros2_node:
 
 mppi:
   package_name: "mppi_solver"
-  urdf_name: "SSRMS_Canadarm2_w_iss.urdf"
-  controller_name: "/canadarm_joint_controller"
+  urdf_name: "floating_canadarm.urdf"
+  controller_name: "/floating_canadarm_joint_controller"
   horizon: 32
   sample: 1000
   action: 7
   dt: 0.01
-  free_floating: False
+  free_floating: True
   base_move: False
   alpha: 0.1
   gamma: 0.98
   _lambda: 0.1
   manipulator_dof: 7
   mobile_dof: 0
-  sigma_scale: 0.3
   joint_order: ["Base_Joint", "Shoulder_Roll", "Shoulder_Yaw", "Elbow_Pitch", "Wrist_Pitch", "Wrist_Yaw", "Wrist_Roll"]
 
 cost:
@@ -47,4 +46,4 @@ sample:
 
 wrapper:
   package_name: 'mppi_controller'
-  urdf_name: 'Canadarm2_w_iss.urdf'
+  urdf_name: 'floating_canadarm.urdf'

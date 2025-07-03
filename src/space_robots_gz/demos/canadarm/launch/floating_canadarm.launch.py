@@ -1,11 +1,11 @@
 from http.server import executable
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, ExecuteProcess, RegisterEventHandler, IncludeLaunchDescription
+from launch.actions import DeclareLaunchArgument, ExecuteProcess, RegisterEventHandler, IncludeLaunchDescription, TimerAction
 from launch.substitutions import TextSubstitution, PathJoinSubstitution, LaunchConfiguration, Command
-from launch_ros.actions import Node
+from launch_ros.actions import Node, SetParameter
 from launch_ros.substitutions import FindPackageShare
 from launch.launch_description_sources import PythonLaunchDescriptionSource
-from launch.event_handlers import OnProcessExit, OnExecutionComplete
+from launch.event_handlers import OnProcessExit
 import os
 from os import environ
 
@@ -24,7 +24,6 @@ def generate_launch_description():
                      environ.get('LD_LIBRARY_PATH', default='')]),
            'IGN_GAZEBO_RESOURCE_PATH':
            ':'.join([environ.get('IGN_GAZEBO_RESOURCE_PATH', default=''), canadarm_demos_path])}
-
 
     urdf_model_path = os.path.join(simulation_models_path, 'models', 'canadarm', 'urdf', 'floating_canadarm.urdf.xacro')
     leo_model = os.path.join(canadarm_demos_path, 'worlds', 'simple_wo_iss.world')
@@ -64,6 +63,13 @@ def generate_launch_description():
         arguments=['/model/canadarm/pose@geometry_msgs/msg/TransformStamped@ignition.msgs.Pose'],
     )
 
+    clock = Node(
+        package='ros_ign_bridge',
+        executable='parameter_bridge',
+        arguments=['/world/default/clock@rosgraph_msgs/msg/Clock[ignition.msgs.Clock'],
+        output='screen'
+    )
+
     # Control
     load_joint_state_broadcaster = ExecuteProcess(
         cmd=['ros2', 'control', 'load_controller', '--set-state', 'active',
@@ -77,19 +83,42 @@ def generate_launch_description():
         output='screen'
     )
 
+    canadarm_wrapper_spawn = Node(
+        package="mppi_controller",
+        executable="canadarm_controller_node",
+        output='screen',
+        parameters=[{'config_file': 'reach_floating.yaml'}]
+    )
+
     # Target spawn
     ets_vii_target_spawn = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(os.path.join(get_package_share_directory('ets_vii'),
-                'launch/spawn_ets_vii.launch.py')),
+                'launch/spawn_tumble_ets_vii.launch.py')),
         launch_arguments=[]
     )
+
+    ets_vii_tumbling = ExecuteProcess(
+        cmd=['ign', 'topic', '-t', '/world/default/wrench', '-m', 'ignition.msgs.EntityWrench',
+            '-p', '\"entity:', '{name:', '\'ets_vii\',', 'type:', 'MODEL},', 'wrench:', '{force:', '{x:50000,', 'y:50000},',
+            'torque:', '{x:50000,', 'y:50000,', 'z:50000}}\"'],
+        output='screen',
+        shell=True
+    )
+
+    delay_ets_vii_tumbling = TimerAction(
+        period=6.0,
+        actions=[ets_vii_tumbling]
+    )
+
 
     return LaunchDescription([
         start_world,
         robot_state_publisher,
         pose_publisher,
+        clock,
         spawn,
         ets_vii_target_spawn,
+        delay_ets_vii_tumbling,
 
         RegisterEventHandler(
             OnProcessExit(
@@ -101,6 +130,12 @@ def generate_launch_description():
             OnProcessExit(
                 target_action=load_joint_state_broadcaster,
                 on_exit=[load_canadarm_joint_controller],
+            )
+        ),
+        RegisterEventHandler(
+            OnProcessExit(
+                target_action=load_canadarm_joint_controller,
+                on_exit=[canadarm_wrapper_spawn],
             )
         ),
     ])

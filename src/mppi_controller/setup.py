@@ -26,6 +26,8 @@ setup(
             glob('mppi_controller/models/franka/meshes/collision/*')),
         (os.path.join('share', package_name, 'models', 'franka', 'meshes', 'visual'),
             glob('mppi_controller/models/franka/meshes/visual/*')),
+        (os.path.join('share', package_name, 'configs', 'canadarm'),
+            glob('mppi_controller/configs/canadarm/*.yaml')),
     ],
     install_requires=['setuptools'],
     zip_safe=True,

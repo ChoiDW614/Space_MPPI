@@ -119,16 +119,16 @@ class URDFparser(object):
                     joint_list.append(jnt)
         return joint_list
     
-    def forward_kinematics(self, q: torch.Tensor, base_movement: bool = False):
+    def forward_kinematics(self, q: torch.Tensor, free_floating: bool = False, base_move : bool = False):
         if self.robot_desc is None:
             raise ValueError("Robot description not loaded.") 
 
         tf_fk = self._tf_fk.expand(self._n_samples, self._n_timestep, 4, 4).to(device=q.device).clone()
 
-        if base_movement:
-            tf_base = transformation_matrix_from_xyzrpy(q=q[:,:,:self._n_mobile_dof])
-            tf_fk = tf_fk @ tf_base
-            q = q[:,:,self._n_mobile_dof:]
+        if free_floating and base_move:
+                tf_base = transformation_matrix_from_xyzrpy(q=q[:,:,:self._n_mobile_dof])
+                tf_fk = tf_fk @ tf_base
+                q = q[:,:,self._n_mobile_dof:]
 
         for jt in self._joint_chain_list:
             jtype = jt.type
@@ -163,13 +163,13 @@ class URDFparser(object):
         return tf_fk
 
 
-    def forward_kinematics_cpu(self, q: torch.Tensor, base_movement: bool = False):
+    def forward_kinematics_cpu(self, q: torch.Tensor, free_floating: bool = False, base_move : bool = False):
         if self.robot_desc is None:
             raise ValueError("Robot description not loaded.") 
 
         tf_fk = self._tf_fk.clone()
 
-        if base_movement:
+        if free_floating and base_move:
             tf_base = transformation_matrix_from_xyzrpy_cpu(q=q[:self._n_mobile_dof])
             tf_fk = tf_fk @ tf_base
             q = q[self._n_mobile_dof:]

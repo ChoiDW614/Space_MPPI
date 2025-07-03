@@ -1,3 +1,9 @@
+import os
+import yaml
+
+import numpy as np
+import torch
+
 import rclpy
 from rclpy.node import Node
 
@@ -8,49 +14,56 @@ from rclpy.qos import ReliabilityPolicy
 from std_msgs.msg import Float64MultiArray
 from control_msgs.msg import DynamicJointState
 
-import numpy as np
-import torch
-
 from mppi_controller.src.wrapper.canadarm_wrapper import CanadarmWrapper
+from mppi_controller.src.utils.config_loader import load_config
+from ament_index_python.packages import get_package_share_directory
 
 
 class MppiControllerNode(Node):
     def __init__(self):
         super().__init__("mppi_controller_node")
-        self.canadarmWrapper = CanadarmWrapper()
+        self.package_name = "mppi_controller"
 
-        self.canadaFlag = False
-        self.solverFlag= False
+        # load config
+        self.declare_parameter('config_file', 'reach.yaml')
+        config_name = self.get_parameter('config_file').get_parameter_value().string_value
+        params = load_config(self.package_name, config_name)
+
+        # set parameters
+        self.is_free_floating = params['controller']['free_floating']
+        self.is_base_move = params['controller']['base_move']
+        self.controller_name = params['controller']['controller_name']
+
+        # robot wrapper
+        self.canadarmWrapper = CanadarmWrapper(params)
 
         # joint control states
-        self.isBaseMoving = False
-        if self.isBaseMoving:
-            self.joint_order = [
-                "v_x_joint", "v_y_joint", "v_z_joint", "v_r_joint", "v_p_joint", "v_yaw_joint",
-                "Base_Joint", "Shoulder_Roll", "Shoulder_Yaw", "Elbow_Pitch", "Wrist_Pitch", "Wrist_Yaw", "Wrist_Roll"]
-        else:
-            self.joint_order = [
-                "Base_Joint", "Shoulder_Roll", "Shoulder_Yaw", "Elbow_Pitch", "Wrist_Pitch", "Wrist_Yaw", "Wrist_Roll"]
+        self.joint_order = params['controller']['joint_order']
         self.joint_names = None
         self.interface_name = None
         self.interface_values = None
 
+        # ros2 topic name
+        self.target_state_topic = self.controller_name + '/target_joint_states'
+        self.arm_topic = self.controller_name + '/commands'
+
         # model state subscriber
         subscribe_qos_profile = QoSProfile(depth=5, reliability=ReliabilityPolicy.BEST_EFFORT, durability=DurabilityPolicy.VOLATILE)
         self.joint_state_subscriber = self.create_subscription(DynamicJointState, '/dynamic_joint_states', self.joint_state_callback, subscribe_qos_profile)
-        self.target_joint_subscriber = self.create_subscription(Float64MultiArray, '/canadarm_joint_controller/target_joint_states', self.target_joint_callback, subscribe_qos_profile)
+        self.target_joint_subscriber = self.create_subscription(Float64MultiArray, self.target_state_topic, self.target_joint_callback, subscribe_qos_profile)
 
-        # publisher
-        cal_timer_period = 0.01  # seconds
-        pub_timer_period = 0.01  # seconds
+        # control publisher
+        cal_timer_period = params['controller']['cal_timer_period']
+        pub_timer_period = params['controller']['pub_timer_period']
         self.cal_timer = self.create_timer(cal_timer_period, self.cal_timer_callback)
         self.pub_timer = self.create_timer(pub_timer_period, self.pub_timer_callback)
 
         self.arm_msg = Float64MultiArray()
-        if self.isBaseMoving:
-            self.arm_publisher = self.create_publisher(Float64MultiArray, '/floating_canadarm_joint_controller/commands', 10)
-        else:
-            self.arm_publisher = self.create_publisher(Float64MultiArray, '/canadarm_joint_controller/commands', 10)
+        self.arm_publisher = self.create_publisher(Float64MultiArray, self.arm_topic, 10)
+
+        # sim init flag
+        self.canadaFlag = False
+        self.solverFlag= False
 
 
     def cal_timer_callback(self):
@@ -96,12 +109,9 @@ class MppiControllerNode(Node):
 
 
     def target_joint_callback(self, msg):
-
         self.solverFlag = True
         self.target_joint = msg.data
-                
         return
-
 
 
 def main():

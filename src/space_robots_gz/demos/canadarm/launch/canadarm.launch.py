@@ -13,6 +13,7 @@ from ament_index_python.packages import get_package_share_directory
 
 import xacro
 
+
 def generate_launch_description():
     # ld = LaunchDescription()
     canadarm_demos_path = get_package_share_directory('canadarm')
@@ -84,7 +85,8 @@ def generate_launch_description():
     canadarm_wrapper_spawn = Node(
         package="mppi_controller",
         executable="canadarm_controller_node",
-        output='screen'
+        output='screen',
+        parameters=[{'config_file': 'reach.yaml'}]
     )
 
     # Target spawn

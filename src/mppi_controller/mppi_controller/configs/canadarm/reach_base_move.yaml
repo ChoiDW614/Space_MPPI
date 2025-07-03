@@ -1,0 +1,10 @@
+controller:
+  package_name: "mppi_controller"
+  controller_name: "/floating_canadarm_joint_controller"
+  urdf_name: "floating_canadarm.urdf"
+  free_floating: True
+  base_move: True
+  joint_order: ["v_x_joint", "v_y_joint", "v_z_joint", "v_r_joint", "v_p_joint", "v_yaw_joint", 
+                "Base_Joint", "Shoulder_Roll", "Shoulder_Yaw", "Elbow_Pitch", "Wrist_Pitch", "Wrist_Yaw", "Wrist_Roll"]
+  cal_timer_period: 0.01
+  pub_timer_period: 0.01

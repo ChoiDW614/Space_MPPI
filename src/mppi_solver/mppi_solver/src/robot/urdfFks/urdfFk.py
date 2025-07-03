@@ -43,7 +43,8 @@ class URDFForwardKinematics():
         child_link: str,
         parent_link: Union[str, None] = None,
         init_transformation: torch.Tensor = None,
-        base_movement: bool = False,
+        free_floating: bool = False,
+        base_move : bool = False
     ) -> torch.Tensor:
         
         if init_transformation is None:
@@ -60,13 +61,13 @@ class URDFForwardKinematics():
         if parent_link == self._root_link:
             tf_parent = torch.eye(4, device=q.device).expand(self.robot._n_samples, self.robot._n_timestep, 4, 4).clone()
         else:
-            tf_parent = self.robot.forward_kinematics(q, base_movement)
+            tf_parent = self.robot.forward_kinematics(q, free_floating, base_move)
             tf_parent = init_transformation @ self._mount_transformation @ tf_parent
 
         if child_link == self._root_link:
             tf_child = torch.eye(4, device=q.device).expand(self.robot._n_samples, self.robot._n_timestep, 4, 4).clone()
         else:
-            tf_child = self.robot.forward_kinematics(q, base_movement)
+            tf_child = self.robot.forward_kinematics(q, free_floating, base_move)
             tf_child = init_transformation @ self._mount_transformation @ tf_child
 
         tf_parent_inv = torch.linalg.inv(tf_parent)
@@ -80,9 +81,9 @@ class URDFForwardKinematics():
         child_link: str,
         parent_link: Union[str, None] = None,
         init_transformation: torch.Tensor = None,
-        base_movement: bool = False,
+        free_floating: bool = False,
+        base_move : bool = False
     ) -> torch.Tensor:
-
         if init_transformation is None:
             init_transformation = torch.eye(4)
         
@@ -97,13 +98,13 @@ class URDFForwardKinematics():
         if parent_link == self._root_link:
             tf_parent = torch.eye(4).clone()
         else:
-            tf_parent = self.robot.forward_kinematics_cpu(q, base_movement)
+            tf_parent = self.robot.forward_kinematics_cpu(q, free_floating, base_move)
             tf_parent = init_transformation @ self._mount_transformation_cpu @ tf_parent
 
         if child_link == self._root_link:
             tf_child = torch.eye(4).clone()
         else:
-            tf_child = self.robot.forward_kinematics_cpu(q, base_movement)
+            tf_child = self.robot.forward_kinematics_cpu(q, free_floating, base_move)
             tf_child = init_transformation @ self._mount_transformation_cpu @ tf_child
 
         tf_parent_inv = torch.linalg.inv(tf_parent)

@@ -41,9 +41,10 @@ class state():
 
 
 class CanadarmWrapper(RobotWrapper):
-    def __init__(self):
-        package_name = "mppi_controller"
-        urdf_file_path = os.path.join(get_package_share_directory(package_name), "models", "canadarm", "Canadarm2_w_iss.urdf")
+    def __init__(self, params):
+        self.package_name = params['controller']['package_name']
+        self.urdf_name = params['controller']['urdf_name']
+        urdf_file_path = os.path.join(get_package_share_directory(self.package_name), "models", "canadarm", self.urdf_name)
         self.__robot = self.BuildFromURDF(urdf_file_path)
 
         self.data, self.__collision_data, self.__visual_data = \

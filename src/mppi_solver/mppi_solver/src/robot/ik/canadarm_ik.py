@@ -18,7 +18,7 @@ import pinocchio as pin
 from copy import deepcopy
 
 class IKSolver:
-    def __init__(self, isBaseMoving):
+    def __init__(self, params):
         self.logger = get_logger("IKSolver")
         self.se3_traj = SE3Traj()
         
@@ -27,8 +27,9 @@ class IKSolver:
     
         self.initSE3 = pin.SE3(1)
 
-        self.robot = CanadarmWrapper()
+        self.robot = CanadarmWrapper(params)
         self.pgain = 100.0
+
 
     def forward_kinematics(self, q, base_pose: Pose):
         self.full_q[1:8] = q.tolist()

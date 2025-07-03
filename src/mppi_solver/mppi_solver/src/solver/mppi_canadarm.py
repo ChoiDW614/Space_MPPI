@@ -52,7 +52,9 @@ class MPPI():
         torch.set_default_dtype(torch.float32)
 
         # Sampling parameters
-        self.isBaseMoving = self.params['mppi']['isBaseMoving']
+        self.is_free_floating = params['mppi']['free_floating']
+        self.is_base_move = params['mppi']['base_move']
+
         self.n_action = self.params['mppi']['action']
         self.n_manipulator_dof = self.params['mppi']['manipulator_dof']
         self.n_mobile_dof = self.params['mppi']['mobile_dof']
@@ -100,11 +102,10 @@ class MPPI():
 
         # Import URDF for forward kinematics
         package_name = params['mppi']['package_name']
-        if self.isBaseMoving:
-            urdf_file_path = os.path.join(get_package_share_directory(package_name), "models", "canadarm", "floating_canadarm_camera.urdf")
-        else:
-            urdf_file_path = os.path.join(get_package_share_directory(package_name), "models", "canadarm", "SSRMS_Canadarm2_w_iss.urdf")
+        urdf_name = params['mppi']['urdf_name']
+        urdf_file_path = os.path.join(get_package_share_directory(package_name), "models", "canadarm", urdf_name)
 
+        # Forward kinematics
         self.fk_canadarm = URDFForwardKinematics(urdf_file_path, root_link='Base_SSRMS', end_links='EE_SSRMS_tip')
         mount_tf = torch.eye(4, device=self.device)
         mount_tf[0:3, 0:3] = euler_angles_to_matrix(torch.tensor([3.1416, 0.0, 0.0]), 'XYZ')
@@ -140,7 +141,9 @@ class MPPI():
         
 
     def check_reach(self):
-        self.ee_pose.from_matrix(self.fk_canadarm.forward_kinematics_cpu(self._q[self.n_mobile_dof:], 'EE_SSRMS_tip', 'Base_SSRMS', init_transformation=self.base_pose.tf_matrix(), base_movement=False))
+        self.ee_pose.from_matrix(self.fk_canadarm.forward_kinematics_cpu(self._q[self.n_mobile_dof:], 
+                                'EE_SSRMS_tip', 'Base_SSRMS', init_transformation=self.base_pose.tf_matrix(),
+                                free_floating=self.is_free_floating, base_move=self.is_base_move))
         pose_err = pos_diff(self.ee_pose, self.target_pose)
         ee_ori_mat = euler_angles_to_matrix(self.ee_pose.rpy, "ZYX")
         target_ori_mat = euler_angles_to_matrix(self.target_pose.rpy, "ZYX")
@@ -167,7 +170,8 @@ class MPPI():
         noise = self.sample_gen.sampling()
         v = u + noise
         qSamples = self.sample_gen.get_sample_joint(v, self._q, self._qdot, self.dt)
-        trajectory = self.fk_canadarm.forward_kinematics(qSamples, 'EE_SSRMS_tip', 'Base_SSRMS', self.base_pose.tf_matrix(self.device), base_movement=self.isBaseMoving)
+        trajectory = self.fk_canadarm.forward_kinematics(qSamples, 'EE_SSRMS_tip', 'Base_SSRMS', self.base_pose.tf_matrix(self.device), 
+                                                         free_floating=self.is_free_floating, base_move=self.is_base_move)
 
         # none_joint_trajs = torch.zeros((self.n_samples, self.n_horizen, self.n_action), device=self.device)
         self.cost_manager.update_pose_cost(qSamples, v, trajectory, self.reference_joint, self.target_pose)
@@ -203,7 +207,7 @@ class MPPI():
         q_prev = self.sample_gen.get_prev_sample_joint(self.u_prev, self._q, self._qdot, self.dt)
         self.fk_canadarm.robot._n_samples = 1
         ee_traj_prev = self.fk_canadarm.forward_kinematics(q_prev, 'EE_SSRMS_tip', 'Base_SSRMS', \
-                       self.base_pose.tf_matrix(self.device), base_movement=self.isBaseMoving).squeeze(0).cpu()
+                       self.base_pose.tf_matrix(self.device), free_floating=self.is_free_floating, base_move=self.is_base_move).squeeze(0).cpu()
         self.fk_canadarm.robot._n_samples = self.n_samples
 
         prev_stage_cost     = self.cost_manager.pose_cost.compute_prev_stage_cost(ee_traj_prev, self.target_pose)

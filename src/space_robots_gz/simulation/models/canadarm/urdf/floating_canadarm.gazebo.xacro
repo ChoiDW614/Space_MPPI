@@ -1,0 +1,90 @@
+<?xml version="1.0" ?>
+<robot xmlns:xacro="http://wiki.ros.org/xacro">
+
+  <xacro:macro name="floating_canadarm" params="command_interface:=position">
+
+  <ros2_control name="IgnitionSystem" type="system">
+      <hardware>
+          <plugin>ign_ros2_control/IgnitionSystem</plugin>
+      </hardware>
+      <joint name="Base_Joint">
+          <command_interface name="${command_interface}"/>
+          <state_interface name="position"/>
+          <state_interface name="velocity"/>
+          <state_interface name="effort"/>
+      </joint>
+      <joint name="Shoulder_Roll">
+          <command_interface name="${command_interface}"/>
+          <state_interface name="position"/>
+          <state_interface name="velocity"/>
+          <state_interface name="effort"/>
+      </joint>
+      <joint name="Shoulder_Yaw">
+          <command_interface name="${command_interface}"/>
+          <state_interface name="position"/>
+          <state_interface name="velocity"/>
+          <state_interface name="effort"/>
+      </joint>
+      <joint name="Elbow_Pitch">
+          <command_interface name="${command_interface}"/>
+          <state_interface name="position"/>
+          <state_interface name="velocity"/>
+          <state_interface name="effort"/>
+      </joint>
+      <joint name="Wrist_Pitch">
+          <command_interface name="${command_interface}"/>
+          <state_interface name="position"/>
+          <state_interface name="velocity"/>
+          <state_interface name="effort"/>
+      </joint>
+      <joint name="Wrist_Yaw">
+          <command_interface name="${command_interface}"/>
+          <state_interface name="position"/>
+          <state_interface name="velocity"/>
+          <state_interface name="effort"/>
+      </joint>
+      <joint name="Wrist_Roll">
+          <command_interface name="${command_interface}"/>
+          <state_interface name="position"/>
+          <state_interface name="velocity"/>
+          <state_interface name="effort"/>
+      </joint>
+  </ros2_control>
+
+  <gazebo>
+      <plugin filename="libign_ros2_control-system" name="ign_ros2_control::IgnitionROS2ControlPlugin">
+        <robot_param>robot_description</robot_param>
+        <robot_param_node>robot_state_publisher</robot_param_node>
+        <parameters>$(find canadarm)/config/floating_canadarm_control.yaml</parameters>
+      </plugin>
+      <plugin filename="ignition-gazebo-pose-publisher-system" name="ignition::gazebo::systems::PosePublisher">
+        <publish_model_pose>true</publish_model_pose>
+        <publish_nested_model_pose>true</publish_nested_model_pose>
+        <use_pose_vector_msg>false</use_pose_vector_msg>
+        <update_frequency>10</update_frequency>
+      </plugin>
+        <plugin filename="ignition-gazebo-sensors-system" name="ignition::gazebo::systems::Sensors">
+          <render_engine>ogre2</render_engine>
+      </plugin>
+  </gazebo>
+
+  <!-- Colors -->
+  <material name="white">
+    <color rgba="1 1 1 1"/>
+  </material>
+
+  <material name="blue">
+    <color rgba="0 0 1 1"/>
+  </material>
+
+  <material name="red">
+    <color rgba="1 0 0 1"/>
+  </material>
+
+  <material name="green">
+    <color rgba="0 1 0 1"/>
+  </material>
+
+  </xacro:macro>
+
+</robot>  

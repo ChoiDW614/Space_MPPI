@@ -7,116 +7,19 @@ Nguyen, Phung Khac, and Peter C. Hughes. "Teleoperation: from the space shuttle 
 The link CoM locations (with respect to link frame) are set to zero as the inertia tensor is defined with respect to the link frame in the paper.
 
  -->
- 
-<robot name="floating canadarm" xmlns:xacro="http://wiki.ros.org/xacro">
+<robot name="SSRMS_Canadarm2" xmlns:xacro="http://wiki.ros.org/xacro">
   <!-- Gazebo - ROS2 Control macro -->
-  <xacro:include filename="$(find simulation)/models/canadarm/urdf/floating_canadarm_camera.gazebo.xacro" />
-  <xacro:floating_canadarm_gazebo command_interface="effort" />
+  <xacro:include filename="$(find simulation)/models/canadarm/urdf/floating_canadarm.gazebo.xacro" />
+  <xacro:floating_canadarm command_interface="effort" />
   <xacro:property name="PI" value="3.1415926535897931"/>
 
-  <link name="world" />
-
-  <joint name="world_to_vx" type="fixed">
-    <parent link="world"/>
-    <child link="v_x_link"/>
-    <origin xyz="0 0 0" rpy="0 0 0"/>
-  </joint>
-
-  <link name="v_x_link">
-    <inertial>
-      <mass value="0.00001"/>
-      <origin xyz="0 0 0" rpy="0 0 0"/>
-      <inertia ixx="1e-9" ixy="0" ixz="0" iyy="1e-9" iyz="0" izz="1e-9"/>
-    </inertial>
-  </link>
-  <joint name="v_x_joint" type="prismatic">
-    <parent link="v_x_link"/>
-    <child link="v_y_link"/>
-    <origin rpy="0 0 0" xyz="0 0 0"/>
-    <axis xyz="1 0 0"/>
-    <limit lower="-10000.0" upper="10000.0" effort="1000.0" velocity="5.0"/>
-  </joint>
-
-  <link name="v_y_link">
-    <inertial>
-      <mass value="0.00001"/>
-      <origin xyz="0 0 0" rpy="0 0 0"/>
-      <inertia ixx="1e-9" ixy="0" ixz="0" iyy="1e-9" iyz="0" izz="1e-9"/>
-    </inertial>
-  </link>
-  <joint name="v_y_joint" type="prismatic">
-    <parent link="v_y_link"/>
-    <child link="v_z_link"/>
-    <origin rpy="0 0 0" xyz="0 0 0"/>
-    <axis xyz="0 1 0"/>
-    <limit lower="-10000.0" upper="10000.0" effort="1000.0" velocity="5.0"/>
-  </joint>
-
-  <link name="v_z_link">
-    <inertial>
-      <mass value="0.00001"/>
-      <origin xyz="0 0 0" rpy="0 0 0"/>
-      <inertia ixx="1e-9" ixy="0" ixz="0" iyy="1e-9" iyz="0" izz="1e-9"/>
-    </inertial>
-  </link>
-  <joint name="v_z_joint" type="prismatic">
-    <parent link="v_z_link"/>
-    <child link="v_r_link"/>
-    <origin rpy="0 0 0" xyz="0.0 0 -0.0"/>
-    <axis xyz="0 0 1"/>
-    <limit lower="-10000.0" upper="10000.0" effort="1000.0" velocity="5.0"/>
-  </joint>
-
-  <link name="v_r_link">
-    <inertial>
-      <mass value="0.00001"/>
-      <origin xyz="0 0 0" rpy="0 0 0"/>
-      <inertia ixx="1e-9" ixy="0" ixz="0" iyy="1e-9" iyz="0" izz="1e-9"/>
-    </inertial>
-  </link>
-  <joint name="v_r_joint" type="revolute">
-    <parent link="v_r_link"/>
-    <child link="v_p_link"/>
-    <origin rpy="0 0 0" xyz="0.0 0 -0.0"/>
-    <axis xyz="1 0 0"/>
-    <limit lower="-6.28" upper="6.28" effort="1000.0" velocity="5.0"/>
-  </joint>
-
-  <link name="v_p_link">
-    <inertial>
-      <mass value="0.00001"/>
-      <origin xyz="0 0 0" rpy="0 0 0"/>
-      <inertia ixx="1e-9" ixy="0" ixz="0" iyy="1e-9" iyz="0" izz="1e-9"/>
-    </inertial>
-  </link>
-  <joint name="v_p_joint" type="revolute">
-    <parent link="v_p_link"/>
-    <child link="v_yaw_link"/>
-    <origin rpy="0 0 0" xyz="0.0 0 -0.0"/>
-    <axis xyz="0 1 0"/>
-    <limit lower="-6.28" upper="6.28" effort="1000.0" velocity="5.0"/>
-  </joint>
-
-    <link name="v_yaw_link">
-    <inertial>
-      <mass value="0.00001"/>
-      <origin xyz="0 0 0" rpy="0 0 0"/>
-      <inertia ixx="1e-9" ixy="0" ixz="0" iyy="1e-9" iyz="0" izz="1e-9"/>
-    </inertial>
-  </link>
-  <joint name="v_yaw_joint" type="revolute">
-    <parent link="v_yaw_link"/>
-    <child link="ISS"/>
-    <origin rpy="0 0 0" xyz="0.0 0 -0.0"/>
-    <axis xyz="0 0 1"/>
-    <limit lower="-6.28" upper="6.28" effort="1000.0" velocity="5.0"/>
-  </joint>
+  <!-- <link name="world"/> -->
 
   <link name="ISS">
     <inertial>
       <origin rpy="0 0 0" xyz="0 0 0"/>
-      <mass value="1000.0"/>
-      <inertia ixx="1" ixy="0" ixz="0" iyy="1" iyz="0" izz="1"/>
+      <mass value="100000.0"/>
+      <inertia ixx="69585.02" ixy="0" ixz="0" iyy="69585.02" iyz="0" izz="66666.664"/>
     </inertial>
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0"/>
@@ -360,13 +263,11 @@ The link CoM locations (with respect to link frame) are set to zero as the inert
 
   <!-- Link 6 -->
   <link name="B5">
-
     <inertial>
       <origin rpy="1.5708 0 0" xyz="0 0 0.0"/>
       <mass value="105.98"/>
       <inertia ixx="8.305" ixy="0" ixz="0" iyy="3.061" iyz="0" izz="8.0386"/>
     </inertial>
-
     <visual>
       <origin rpy="0 -3.14 0" xyz="0 0 0"/>
       <geometry>
@@ -392,13 +293,11 @@ The link CoM locations (with respect to link frame) are set to zero as the inert
 
   <!-- Link 7 -->
   <link name="B6">
-
     <inertial>
       <origin rpy="0 -1.5708 0" xyz="0 0 0"/>
       <mass value="105.98"/>
       <inertia ixx="12.13" ixy="0" ixz="0" iyy="12.13" iyz="0" izz="3.061"/>
     </inertial>
-
     <visual>
       <origin rpy="0 -1.5708 0" xyz="0 0 0"/>
       <geometry>
@@ -425,13 +324,11 @@ The link CoM locations (with respect to link frame) are set to zero as the inert
 
   <!-- Link 8 -->
   <link name="EE_SSRMS">
-
     <inertial>
       <origin rpy="0 1.5708 0" xyz="0 0 -0.5"/>
       <mass value="243.66"/>
       <inertia ixx="9.336" ixy="0" ixz="0" iyy="44.41" iyz="0" izz="44.41"/>
     </inertial>
-
     <visual>
       <origin rpy="0 -3.1415 0" xyz="0 0 0"/>
       <geometry>
@@ -441,7 +338,7 @@ The link CoM locations (with respect to link frame) are set to zero as the inert
     <collision>
       <origin rpy="0 -3.1415 0" xyz="0 0 0"/>
       <geometry>
-        <mesh filename="package://simulation/models/canadarm/meshes/ee.stl" scale="1.0 1.0 1.0" />
+        <mesh filename="package://simulation/models/canadarm/meshes/ee.stl" scale="1.0 1.0 0.95" />
       </geometry>
     </collision>
   </link>
@@ -468,49 +365,8 @@ The link CoM locations (with respect to link frame) are set to zero as the inert
   <joint name="EE_SSRMS_to_tip" type="fixed">
     <parent link="EE_SSRMS"/>
     <child link="EE_SSRMS_tip"/>
-    <origin rpy="0 ${PI} 0" xyz="0 0 -1.4"/>
+    <origin rpy="${PI} 0 0" xyz="0 0 -1.4"/>
   </joint>
 
-  <joint name="head_camera_joint" type="fixed">
-    <parent link="EE_SSRMS_tip"/>
-    <child link="camera_link"/>
-    <origin rpy="0 ${-PI/2} 0" xyz="0.4 -0.004 -0.15"/>
-  </joint>
-
-  <link name="camera_link">
-    <inertial>
-      <origin xyz="0 0 0" rpy="0 0 0"/>
-      <mass value="0.001" />
-      <inertia ixx="9.1875e-09" ixy="0.0" ixz="0.0" iyy="9.1875e-09" iyz="0.0" izz="1.378125e-08"/>
-    </inertial>
-		<visual>
-      <origin rpy="0.0 0 0" xyz="0 0 0"/>
-      <geometry>
-        <box size="0.0005 0.0005 0.0005"/>
-      </geometry>
-      <material name="green"/>
-    </visual>
-	</link>
-
-  <joint name="base_camera_joint" type="fixed">
-    <parent link="B1"/>
-    <child link="base_camera_link"/>
-    <origin rpy="0 1.5707963267948966 0" xyz="-0.292 -0.003 -1.15"/>
-  </joint>
-
-  <link name="base_camera_link">
-    <inertial>
-      <origin rpy="0 0 0" xyz="0 0 0"/>
-      <mass value="0.001"/>
-      <inertia ixx="9.1875e-09" ixy="0.0" ixz="0.0" iyy="9.1875e-09" iyz="0.0" izz="1.378125e-08"/>
-    </inertial>
-    <visual>
-      <origin rpy="0.0 0 0" xyz="0 0 0"/>
-      <geometry>
-        <box size="0.0005 0.0005 0.0005"/>
-      </geometry>
-      <material name="green"/>
-    </visual>
-  </link>
-  
 </robot>
+
