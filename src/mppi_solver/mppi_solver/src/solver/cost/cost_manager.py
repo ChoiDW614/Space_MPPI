@@ -1,11 +1,10 @@
 import torch
 
-# 수정필요
 from mppi_solver.src.solver.cost.pose_cost import PoseCost
 from mppi_solver.src.solver.cost.covar_cost import CovarCost
 from mppi_solver.src.solver.cost.action_cost import ActionCost
 from mppi_solver.src.solver.cost.joint_space_cost import JointSpaceCost
-
+from mppi_solver.src.solver.cost.base_disturbance_cost_exp import BaseDisturbanceCost
 
 
 from mppi_solver.src.utils.pose import Pose
@@ -36,6 +35,7 @@ class CostManager:
         self.covar_cost = CovarCost(self.covar_weights, self._lambda, self.alpha, self.device)
         self.action_cost = ActionCost(self.action_weights, self.gamma, self.n_horizon, self.device)
         self.joint_cost = JointSpaceCost(self.joint_space_weights, self.gamma, self.n_horizon, self.device)
+        self.disturbace_cost = BaseDisturbanceCost(self.n_action, self.device)
 
         # For Pose Cost
         self.target : Pose
@@ -49,6 +49,9 @@ class CostManager:
         self.v : torch.Tensor
         self.sigma_matrix : torch.Tensor
 
+        # For Disturbance Cost
+        self.base_pose : Pose
+
 
     def update_pose_cost(self, qSamples: torch.Tensor, uSamples: torch.Tensor, eef_trajectories: torch.Tensor, joint_trajectories: torch.Tensor,target: Pose):
         self.target = target.clone()
@@ -58,10 +61,15 @@ class CostManager:
         self.joint_trajectories = joint_trajectories.clone()
 
 
-    def update_covar_cost(self,  u : torch.Tensor , v : torch.Tensor , sigma_matrix : torch.Tensor):
+    def update_covar_cost(self, u: torch.Tensor, v: torch.Tensor, sigma_matrix: torch.Tensor):
         self.u = u.clone()
         self.v = v.clone()
         self.sigma_matrix = sigma_matrix.clone()
+
+
+    def update_base_cost(self, base_pose: Pose, q: torch.Tensor):
+        self.base_pose = base_pose
+        self.test_joint = q
 
 
     def compute_all_cost(self):
@@ -73,6 +81,10 @@ class CostManager:
         # S += self.joint_cost.compute_centering_cost(self.qSamples)
         S += self.joint_cost.compute_jointTraj_cost(self.qSamples, self.joint_trajectories)
         S += self.action_cost.compute_action_cost(self.uSamples)
+
+        self.collision_cost.comput_
+
+        # self.disturbace_cost.compute_base_disturbance_cost(self.base_pose, self.test_joint, None, None)
 
         return S
     

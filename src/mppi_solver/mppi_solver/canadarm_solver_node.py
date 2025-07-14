@@ -60,8 +60,8 @@ class MppiSolverNode(Node):
         if response is not None:
             config_name = response.values[0].string_value
         else:
-            config_name = 'reach.yaml'
-        self._logger.info(f"config_name: {config_name}")
+            config_name = 'reach_floating.yaml'
+        self._logger.info(f"task: {config_name}")
         params = load_config(self.package_name, config_name)
 
         # ROBOT
@@ -146,6 +146,9 @@ class MppiSolverNode(Node):
             qdes, vdes = self.controller.compute_control_input()
             self.qdes = qdes.clone().cpu().numpy()
             self.vdes = vdes.clone().cpu().numpy()
+            # self._logger.info(f"joint_skew    : {self.canadarmWrapper.state.J}")
+            # self._logger.info(f"joint_autograd: {self.controller.cost_manager.disturbace_cost.js_auto}")
+            # self._logger.info(f"error: {self.canadarmWrapper.state.J - self.controller.cost_manager.disturbace_cost.js_auto.cpu().numpy()}")
         return
 
 

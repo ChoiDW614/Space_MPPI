@@ -144,6 +144,8 @@ class MPPI():
         self.ee_pose.from_matrix(self.fk_canadarm.forward_kinematics_cpu(self._q[self.n_mobile_dof:], 
                                 'EE_SSRMS_tip', 'Base_SSRMS', init_transformation=self.base_pose.tf_matrix(),
                                 free_floating=self.is_free_floating, base_move=self.is_base_move))
+        
+        # self.logger.info(f"ee pose            : {self.ee_pose.np_pose}")
         pose_err = pos_diff(self.ee_pose, self.target_pose)
         ee_ori_mat = euler_angles_to_matrix(self.ee_pose.rpy, "ZYX")
         target_ori_mat = euler_angles_to_matrix(self.target_pose.rpy, "ZYX")
@@ -172,10 +174,13 @@ class MPPI():
         qSamples = self.sample_gen.get_sample_joint(v, self._q, self._qdot, self.dt)
         trajectory = self.fk_canadarm.forward_kinematics(qSamples, 'EE_SSRMS_tip', 'Base_SSRMS', self.base_pose.tf_matrix(self.device), 
                                                          free_floating=self.is_free_floating, base_move=self.is_base_move)
+        
+        # self.logger.info(f"base: {self.base_pose.np_pose}, {self.base_pose.np_rpy}")
 
         # none_joint_trajs = torch.zeros((self.n_samples, self.n_horizen, self.n_action), device=self.device)
         self.cost_manager.update_pose_cost(qSamples, v, trajectory, self.reference_joint, self.target_pose)
         self.cost_manager.update_covar_cost(u, v, self.sample_gen.sigma_matrix)
+        self.cost_manager.update_base_cost(self.base_pose, self._q)
         S = self.cost_manager.compute_all_cost()
 
         w = self.compute_weights(S, self._lambda)
@@ -258,3 +263,4 @@ class MPPI():
     def setReference(self, reference_joint):
         self.reference_joint = reference_joint.clone()
         # self.reference_se3 = reference_se3.clone()
+

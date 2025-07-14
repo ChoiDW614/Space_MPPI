@@ -80,7 +80,8 @@ class CanadarmWrapper(RobotWrapper):
         self.state.a = pin.aba(self.model, self.data, self.state.q, self.state.v, self.state.tau)
         self.state.oMi = self.data.oMi[self.state.id]
         Adj_mat = self.computeAdjMat(self.eef_to_tip)
-        self.state.J = self.getJointJacobian(self.state.id)
+        # self.state.J = self.getJointJacobian(self.state.id)
+        self.state.J = self.getJointJacobian(self.state.id, pin.ReferenceFrame.LOCAL_WORLD_ALIG)
 
     def computeAdjMat(self, aTb : pin.SE3):
         rot = aTb.rotation

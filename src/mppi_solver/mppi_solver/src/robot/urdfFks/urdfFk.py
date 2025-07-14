@@ -4,6 +4,8 @@ import torch
 
 import mppi_solver.src.robot.urdfFks.urdfparser as u2c
 
+from rclpy.logging import get_logger
+
 class LinkNotInURDFError(Exception):
     pass
 
