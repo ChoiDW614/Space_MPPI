@@ -1,0 +1,50 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://ros.org/wiki/xacro" name="spawn_spheres">
+
+  <xacro:macro name="unit_sphere" params="link_name model_name x y z r">
+    <link name="${link_name}">
+      <visual name="visual">
+        <geometry>
+          <sphere>
+            <radius>${r}</radius>
+          </sphere>
+        </geometry>
+        <material>
+          <ambient>1 0 0 1</ambient>
+          <diffuse>1 0 0 1</diffuse>
+        </material>
+        <origin xyz="0 0 0" rpy="0 0 0"/>
+      </visual>
+      <collision name="collision">
+        <geometry>
+          <sphere>
+            <radius>${r}</radius>
+          </sphere>
+        </geometry>
+      </collision>
+      <inertial>
+        <mass>1.0</mass>
+        <inertia ixx="0.1" ixy="0.0" ixz="0.0" 
+                 iyy="0.1" iyz="0.0" izz="0.1"/>
+      </inertial>
+    </link>
+
+    <gazebo reference="${link_name}">
+      <pose>${x} ${y} ${z} 0 0 0</pose>
+      <plugin filename="ignition-gazebo-pose-publisher-system"
+              name="ign_pose_pub_${model_name}">
+        <publish_model_pose>true</publish_model_pose>
+        <publish_nested_model_pose>true</publish_nested_model_pose>
+        <use_pose_vector_msg>false</use_pose_vector_msg>
+        <update_frequency>10</update_frequency>
+      </plugin>
+      <plugin filename="ignition-gazebo-sensors-system"
+              name="ign_sensors_${model_name}">
+        <render_engine>ogre2</render_engine>
+      </plugin>
+    </gazebo>
+  </xacro:macro>
+
+  <xacro:unit_sphere link_name="ball1_link" model_name="ball1" x="-3.0" y="-2.0" z="6.0" r="0.3"/>
+  <xacro:unit_sphere link_name="ball2_link" model_name="ball2" x="2.0" y="1.0" z="5.0" r="0.3"/>
+</robot>

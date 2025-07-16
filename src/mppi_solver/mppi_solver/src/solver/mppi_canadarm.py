@@ -50,6 +50,7 @@ class MPPI():
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         self.logger.info('Device: ' + self.device.type)
         torch.set_default_dtype(torch.float32)
+        self.tensor_args = {'device': self.device, 'dtype': torch.float32}
 
         # Sampling parameters
         self.is_free_floating = params['mppi']['free_floating']
@@ -63,27 +64,27 @@ class MPPI():
         self.dt = self.params['mppi']['dt']
 
         # Manipulator states
-        self._q = torch.zeros(self.n_action, device=self.device)
-        self._qdot = torch.zeros(self.n_action, device=self.device)
-        self._qddot = torch.zeros(self.n_action, device=self.device)
+        self._q = torch.zeros(self.n_action, **self.tensor_args)
+        self._qdot = torch.zeros(self.n_action, **self.tensor_args)
+        self._qddot = torch.zeros(self.n_action, **self.tensor_args)
 
-        self.q_prev = torch.zeros(self.n_action, device=self.device)
-        self.v_prevv = torch.zeros(self.n_action, device=self.device)
+        self.q_prev = torch.zeros(self.n_action, **self.tensor_args)
+        self.v_prevv = torch.zeros(self.n_action, **self.tensor_args)
 
         self.ee_pose = Pose()
-        self.eefTraj = torch.zeros((self.n_samples, self.n_horizen, 4, 4), device=self.device)
+        self.eefTraj = torch.zeros((self.n_samples, self.n_horizen, 4, 4), **self.tensor_args)
 
         # Action
-        self.u = torch.zeros((self.n_action), device=self.device)
-        self.u_prev = torch.zeros((self.n_horizen, self.n_action), device = self.device)
+        self.u = torch.zeros((self.n_action), **self.tensor_args)
+        self.u_prev = torch.zeros((self.n_horizen, self.n_action), **self.tensor_args)
 
         # Buffer
         self.buffer_size = 10
-        self.weight_buffer = torch.zeros((self.buffer_size, self.n_samples), device=self.device)
-        self.action_buffer = torch.zeros((self.buffer_size, self.n_samples, self.n_horizen, self.n_action), device=self.device)
+        self.weight_buffer = torch.zeros((self.buffer_size, self.n_samples), **self.tensor_args)
+        self.action_buffer = torch.zeros((self.buffer_size, self.n_samples, self.n_horizen, self.n_action), **self.tensor_args)
 
         # Sampling class
-        self.sample_gen = StandardSampling(self.params, self.device)
+        self.sample_gen = StandardSampling(self.params, self.tensor_args)
 
         # base control states
         self.base_pose = Pose()
@@ -94,11 +95,11 @@ class MPPI():
         self.target_pose.orientation = torch.tensor([0.0, 0.0, 0.0, 1.0])
         self.predict_target_pose = torch.zeros((self.n_horizen, 6))
 
-        self.diff_ori_3d = torch.zeros((3), device=self.device)
+        self.diff_ori_3d = torch.zeros((3), **self.tensor_args)
 
         # MPPI Cost Manager
         self._lambda = params['mppi']['_lambda']
-        self.cost_manager = CostManager(self.params, self.device)
+        self.cost_manager = CostManager(self.params, self.tensor_args)
 
         # Import URDF for forward kinematics
         package_name = params['mppi']['package_name']
@@ -107,7 +108,7 @@ class MPPI():
 
         # Forward kinematics
         self.fk_canadarm = URDFForwardKinematics(urdf_file_path, root_link='Base_SSRMS', end_links='EE_SSRMS_tip')
-        mount_tf = torch.eye(4, device=self.device)
+        mount_tf = torch.eye(4, **self.tensor_args)
         mount_tf[0:3, 0:3] = euler_angles_to_matrix(torch.tensor([3.1416, 0.0, 0.0]), 'XYZ')
         mount_tf[0:3, 3] = torch.tensor([0.0, 0.0, 3.6])
         self.fk_canadarm.set_mount_transformation(mount_tf)
@@ -119,9 +120,12 @@ class MPPI():
         # Align the target pose
         self.is_align = False
 
+        # Collision avoidance target (debris)
+        self.collision_target = torch.tensor([[0.0, 0.0, 0.0]], **self.tensor_args)
+
         # 250519
         self.noise = None
-        self.noise_prev = torch.zeros((self.n_samples, self.n_horizen, self.n_action), device=self.device)
+        self.noise_prev = torch.zeros((self.n_samples, self.n_horizen, self.n_action), **self.tensor_args)
         self.uSamples = None
         self.param_gamma = self._lambda * (1.0 - 0.9)
         self.is_reaching = False
@@ -132,7 +136,7 @@ class MPPI():
         self.matlab_logger.create_dataset(dataset_name="end_effector_pose", shape=7)
         self.matlab_logger.create_dataset(dataset_name="pos_err", shape=4)
         self.matlab_logger.create_dataset(dataset_name="ori_err", shape=4)
-        self.matlab_logger.create_dataset(dataset_name="cost", shape=7)
+        self.matlab_logger.create_dataset(dataset_name="cost", shape=8)
         self.matlab_logger.create_dataset(dataset_name="sigma", shape=(self.n_action+1))
 
         self.reference_joint = None
@@ -171,16 +175,18 @@ class MPPI():
         u = self.u_prev.clone()
         noise = self.sample_gen.sampling()
         v = u + noise
-        qSamples = self.sample_gen.get_sample_joint(v, self._q, self._qdot, self.dt)
-        trajectory = self.fk_canadarm.forward_kinematics(qSamples, 'EE_SSRMS_tip', 'Base_SSRMS', self.base_pose.tf_matrix(self.device), 
+        qSamples = self.sample_gen.get_sample_joint(v, self._q, self._qdot, self.dt).to(**self.tensor_args)
+        trajectory = self.fk_canadarm.forward_kinematics(qSamples, 'EE_SSRMS_tip', 'Base_SSRMS', self.base_pose.tf_matrix(self.tensor_args), 
                                                          free_floating=self.is_free_floating, base_move=self.is_base_move)
         
         # self.logger.info(f"base: {self.base_pose.np_pose}, {self.base_pose.np_rpy}")
 
-        # none_joint_trajs = torch.zeros((self.n_samples, self.n_horizen, self.n_action), device=self.device)
+        # none_joint_trajs = torch.zeros((self.n_samples, self.n_horizen, self.n_action), **self.tensor_args)
         self.cost_manager.update_pose_cost(qSamples, v, trajectory, self.reference_joint, self.target_pose)
         self.cost_manager.update_covar_cost(u, v, self.sample_gen.sigma_matrix)
         self.cost_manager.update_base_cost(self.base_pose, self._q)
+        self.cost_manager.update_collision_cost(self.collision_target)
+
         S = self.cost_manager.compute_all_cost()
 
         w = self.compute_weights(S, self._lambda)
@@ -212,7 +218,7 @@ class MPPI():
         q_prev = self.sample_gen.get_prev_sample_joint(self.u_prev, self._q, self._qdot, self.dt)
         self.fk_canadarm.robot._n_samples = 1
         ee_traj_prev = self.fk_canadarm.forward_kinematics(q_prev, 'EE_SSRMS_tip', 'Base_SSRMS', \
-                       self.base_pose.tf_matrix(self.device), free_floating=self.is_free_floating, base_move=self.is_base_move).squeeze(0).cpu()
+                       self.base_pose.tf_matrix(self.tensor_args), free_floating=self.is_free_floating, base_move=self.is_base_move).squeeze(0).cpu()
         self.fk_canadarm.robot._n_samples = self.n_samples
 
         prev_stage_cost     = self.cost_manager.pose_cost.compute_prev_stage_cost(ee_traj_prev, self.target_pose)
@@ -221,6 +227,7 @@ class MPPI():
         prev_tracking_cost  = self.cost_manager.joint_cost.compute_prev_jointTraj_cost(q_prev, self.reference_joint)
         prev_action_cost    = self.cost_manager.action_cost.compute_prev_action_cost(self.u_prev)
         prev_covar_cost     = self.cost_manager.covar_cost.compute_prev_covar_cost(self.sample_gen.sigma_matrix, self.u_prev, self.noise_prev)
+        prev_collision_cost = self.cost_manager.collision_cost.compute_prev_collision_cost(self.base_pose, q_prev, self.collision_target)
 
         mean_prev_stage_cost     = torch.mean(prev_stage_cost)
         mean_prev_terminal_cost  = torch.mean(prev_terminal_cost)
@@ -228,6 +235,7 @@ class MPPI():
         mean_prev_tracking_cost  = torch.mean(prev_tracking_cost)
         mean_prev_action_cost    = torch.mean(prev_action_cost)
         mean_prev_covar_cost     = torch.mean(prev_covar_cost)
+        mean_prev_collision_cost = torch.mean(prev_collision_cost)
 
         self.matlab_logger.log("end_effector_pose", [self.sim_time.time] + self.ee_pose.np_pose.tolist() + self.ee_pose.np_rpy.tolist())
         self.matlab_logger.log("pos_err", [self.sim_time.time] + (self.ee_pose.np_pose - self.target_pose.np_pose).tolist())
@@ -237,13 +245,14 @@ class MPPI():
                                                                mean_prev_centering_cost.item(),
                                                                mean_prev_tracking_cost.item(),
                                                                mean_prev_action_cost.item(),
-                                                               mean_prev_covar_cost.item()])
+                                                               mean_prev_covar_cost.item(),
+                                                               mean_prev_collision_cost.item()])
         self.matlab_logger.log("sigma", [self.sim_time.time] + torch.diag(self.sample_gen.sigma).tolist())
         return
     
 
     def set_joint(self, joint_states):
-        joint_states = joint_states.to(self.device)
+        joint_states = joint_states.to(**self.tensor_args)
     
         self._q = joint_states[:, 0]
         self._qdot = joint_states[:, 1]
@@ -260,7 +269,10 @@ class MPPI():
         self.base_pose.orientation = ori
         return
     
+    def set_collision_target(self, target: torch.Tensor):
+        self.collision_target = target.clone().to(**self.tensor_args)
+        return
+    
     def setReference(self, reference_joint):
         self.reference_joint = reference_joint.clone()
         # self.reference_se3 = reference_se3.clone()
-

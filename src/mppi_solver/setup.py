@@ -30,6 +30,8 @@ setup(
             glob('mppi_solver/models/ets_vii/*.urdf')),
         (os.path.join('share', package_name, 'configs', 'canadarm'),
             glob('mppi_solver/configs/canadarm/*.yaml')),
+        (os.path.join('share', package_name, 'pts'),
+            glob('mppi_solver/src/solver/cost/pts/*.pt')),
     ],
     install_requires=['setuptools'],
     zip_safe=True,

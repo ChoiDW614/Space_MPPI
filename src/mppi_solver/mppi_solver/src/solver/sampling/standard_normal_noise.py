@@ -4,18 +4,18 @@ from rclpy.logging import get_logger
 
 
 class StandardSampling:
-    def __init__(self, params, device):
+    def __init__(self, params, tensor_args):
         self.logger = get_logger("Standard_Sampling")
 
         # Torch GPU
-        self.device = device
+        self.tensor_args = tensor_args
 
         # Sampling Parameter
         self.n_sample  = params['mppi']['sample']
         self.n_horizon = params['mppi']['horizon']
         self.n_action  = params['mppi']['action']
         self.sigma_scale: float = params['sample']['sigma_scale']
-        self.sigma: torch.Tensor = torch.eye((self.n_action), device = self.device) * self.sigma_scale
+        self.sigma: torch.Tensor = torch.eye((self.n_action), **self.tensor_args) * self.sigma_scale
         self.init_sigma: torch.Tensor = self.sigma.clone()
 
         self.sigma_matrix = self.sigma.expand(self.n_sample, self.n_horizon, -1, -1)
@@ -25,18 +25,18 @@ class StandardSampling:
 
         if self.sigma_update:
             self.kappa = params['sample']['kappa']
-            self.kappa_eye = self.kappa * torch.eye((self.n_action), device=self.device)
+            self.kappa_eye = self.kappa * torch.eye((self.n_action), **self.tensor_args)
 
             if params['sample']['sigma_update_type'] == "CMA_ES":
                 self.update_fn = self.update_distribution_CMA_ES
                 # CMA-ES Parameter
-                self.mean  = torch.zeros((self.n_action), device=self.device)
-                self.ps = torch.zeros((self.n_action), device=self.device)  # Evolution path
-                self.pc = torch.zeros((self.n_action), device=self.device)  # Evolution path for covariance matrix
+                self.mean  = torch.zeros((self.n_action), **self.tensor_args)
+                self.ps = torch.zeros((self.n_action), **self.tensor_args)  # Evolution path
+                self.pc = torch.zeros((self.n_action), **self.tensor_args)  # Evolution path for covariance matrix
                 self.cc = torch.tensor(4 / (self.n_action + 4))
                 self.c1 = torch.tensor(2 / ((self.n_action + 1.3) ** 2))
                 # CMA-ES Computation optimization variables
-                self.kappa_eye = self.kappa * torch.eye((self.n_action), device=self.device)
+                self.kappa_eye = self.kappa * torch.eye((self.n_action), **self.tensor_args)
                 self._one_minus_c1 = 1 - self.c1
                 self._cs_action = self.n_action + 5
                 self._cmu_action = (self.n_action + 2) ** 2
@@ -50,7 +50,7 @@ class StandardSampling:
 
 
     def sampling(self):
-        standard_normal_noise = torch.randn(self.n_sample, self.n_horizon, self.n_action, device=self.device)
+        standard_normal_noise = torch.randn(self.n_sample, self.n_horizon, self.n_action, **self.tensor_args)
         self.sigma_matrix = self.sigma.expand(self.n_sample, self.n_horizon, -1, -1)
         noise = torch.matmul(standard_normal_noise.unsqueeze(-2), self.sigma_matrix).squeeze(-2)
         return noise

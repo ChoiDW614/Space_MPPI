@@ -1,17 +1,17 @@
 import torch
 
 class CanadarmConfiguration:
-    def __init__(self, n_action, device):
-        self.device = device
+    def __init__(self, n_action, tensor_args):
+        self.tensor_args = tensor_args
         self.n_action = n_action
 
-        self.rpyxyz_tip= torch.tensor([0, 3.141592653589793, 0, 0, 0, -1.4], dtype=torch.float32, device=self.device)
-        self.T_to_base = torch.tensor([[1.0, 0.0, 0.0, 0.0], [0.0, -1.0, 0.0, 0.0], [0.0, 0.0, -1.0, 3.6], [0.0, 0.0, 0.0, 1.0]], device=self.device)
+        self.rpyxyz_tip= torch.tensor([0, 3.141592653589793, 0, 0, 0, -1.4], **self.tensor_args)
+        self.T_to_base = torch.tensor([[1.0, 0.0, 0.0, 0.0], [0.0, -1.0, 0.0, 0.0], [0.0, 0.0, -1.0, 3.6], [0.0, 0.0, 0.0, 1.0]], **self.tensor_args)
         self.rpyxyz = torch.tensor([[0, 0, 0, 0, 0, 0],            [0, 0, 0, 0.25082, 0, -0.175],
                                     [0, 0, 0, 0.175, 0, -0.25082], [0, 0, 0, 7.61164, 0, -0.6],
                                     [0, 0, 0, -7.61164, 0, -0.35], [0, 0, 0, -0.175, 0, -0.25082],
-                                    [0, 0, 0, -0.25082, 0, -0.175]], dtype=torch.float32, device=self.device)
-        self.axis = torch.tensor([[0, 0, 1], [1, 0, 0], [0, 0, 1], [0, 0, 1], [0, 0, -1], [1, 0, 0],  [0, 0, 1]], dtype=torch.float32, device=self.device)
+                                    [0, 0, 0, -0.25082, 0, -0.175]], **self.tensor_args)
+        self.axis = torch.tensor([[0, 0, 1], [1, 0, 0], [0, 0, 1], [0, 0, 1], [0, 0, -1], [1, 0, 0],  [0, 0, 1]], **self.tensor_args)
 
         self.s_list = torch.tensor([[0.0, 0.0, 1.0, 0.0,        0.0, 0.0],
                                     [1.0, 0.0, 0.0, 0.0,-1.7500e-01, 0.0],
@@ -19,7 +19,7 @@ class CanadarmConfiguration:
                                     [0.0, 0.0, 1.0, 0.0,-8.0375e+00, 0.0],
                                     [0.0, 0.0,-1.0, 0.0, 4.2582e-01, 0.0],
                                     [1.0, 0.0, 0.0, 0.0,-1.6266e+00, 0.0],
-                                    [0.0, 0.0, 1.0, 0.0,-3.2783e-07, 0.0]], dtype=torch.float32, device=self.device).T
+                                    [0.0, 0.0, 1.0, 0.0,-3.2783e-07, 0.0]], **self.tensor_args).T
         
         self.m_list = torch.tensor([[[ 1.0,  0.0,  0.0,  0.0],
                                     [ 0.0,  1.0,  0.0,  0.0],
@@ -48,5 +48,5 @@ class CanadarmConfiguration:
                                     [[ 1.0,  0.0,  0.0,  3.2783e-07],
                                     [ 0.0,  1.0,  0.0,  0.0],
                                     [ 0.0,  0.0,  1.0, -1.8016e+00],
-                                    [ 0.0,  0.0,  0.0,  1.0]]], dtype=torch.float32, device=self.device)
+                                    [ 0.0,  0.0,  0.0,  1.0]]], **self.tensor_args)
         

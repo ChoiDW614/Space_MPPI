@@ -8,9 +8,9 @@ from mppi_solver.src.utils.rotation_conversions import euler_angles_to_matrix, m
 from rclpy.logging import get_logger
 
 class PoseCost():
-    def __init__(self, params, gamma, n_horizen, device):
+    def __init__(self, params, gamma, n_horizen, tensor_args):
         self.logger = get_logger("PoseCost")
-        self.device = device
+        self.tensor_args = tensor_args
         self.n_horizen = n_horizen
         self.gamma = gamma
 
@@ -25,8 +25,8 @@ class PoseCost():
         ee_sample_pose = eefTraj[:,:-1,0:3,3].clone()
         ee_sample_orientation = eefTraj[:,:-1,0:3,0:3].clone()
         
-        diff_pose = ee_sample_pose - target_pose.pose.to(device=self.device)
-        target_pose_ori_mat = euler_angles_to_matrix(target_pose.rpy.to(device=self.device), "ZYX")
+        diff_pose = ee_sample_pose - target_pose.pose.to(**self.tensor_args)
+        target_pose_ori_mat = euler_angles_to_matrix(target_pose.rpy.to(**self.tensor_args), "ZYX")
 
         diff_ori_mat = torch.matmul(torch.linalg.inv(ee_sample_orientation), target_pose_ori_mat)
         diff_orientation = matrix_to_euler_angles(diff_ori_mat, "ZYX")
@@ -35,7 +35,7 @@ class PoseCost():
         cost_orientation = torch.norm(diff_orientation, p=2, dim=-1, keepdim=False)
 
         stage_cost = self.stage_pose_weight * cost_pose + self.stage_orientation_weight * cost_orientation
-        gamma = self.gamma ** torch.arange(self.n_horizen-1, device=self.device)
+        gamma = self.gamma ** torch.arange(self.n_horizen-1, **self.tensor_args)
         stage_cost = stage_cost * gamma
 
         stage_cost = torch.sum(stage_cost, dim=1)
@@ -46,8 +46,8 @@ class PoseCost():
         ee_sample_pose = eefTraj[:,-1,0:3,3].clone()
         ee_sample_orientation = eefTraj[:,-1,0:3,0:3].clone()
 
-        diff_pose = ee_sample_pose - target_pose.pose.to(device=self.device)
-        target_pose_ori_mat = euler_angles_to_matrix(target_pose.rpy.to(device=self.device), "ZYX")
+        diff_pose = ee_sample_pose - target_pose.pose.to(**self.tensor_args)
+        target_pose_ori_mat = euler_angles_to_matrix(target_pose.rpy.to(**self.tensor_args), "ZYX")
 
         diff_ori_mat = torch.matmul(torch.linalg.inv(ee_sample_orientation), target_pose_ori_mat)
         diff_orientation = matrix_to_euler_angles(diff_ori_mat, "ZYX")

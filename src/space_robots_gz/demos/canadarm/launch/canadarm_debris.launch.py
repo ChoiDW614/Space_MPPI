@@ -2,7 +2,7 @@ from http.server import executable
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, ExecuteProcess, RegisterEventHandler, IncludeLaunchDescription, TimerAction
 from launch.substitutions import TextSubstitution, PathJoinSubstitution, LaunchConfiguration, Command
-from launch_ros.actions import Node, SetParameter
+from launch_ros.actions import Node
 from launch_ros.substitutions import FindPackageShare
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.event_handlers import OnProcessExit
@@ -25,9 +25,8 @@ def generate_launch_description():
            'IGN_GAZEBO_RESOURCE_PATH':
            ':'.join([environ.get('IGN_GAZEBO_RESOURCE_PATH', default=''), canadarm_demos_path])}
 
-    urdf_model_path = os.path.join(simulation_models_path, 'models', 'canadarm', 'urdf', 'floating_canadarm.urdf.xacro')
-    leo_model = os.path.join(canadarm_demos_path, 'worlds', 'simple_wo_iss.world')
-
+    urdf_model_path = os.path.join(simulation_models_path, 'models', 'canadarm', 'urdf', 'SSRMS_Canadarm2_w_iss.urdf.xacro')
+    leo_model = os.path.join(canadarm_demos_path, 'worlds', 'simple_wo_iss_display.world')
     doc = xacro.process_file(urdf_model_path)
     robot_description = {'robot_description': doc.toxml()}
 
@@ -79,7 +78,7 @@ def generate_launch_description():
 
     load_canadarm_joint_controller = ExecuteProcess(
         cmd=['ros2', 'control', 'load_controller', '--set-state', 'active',
-             'floating_canadarm_joint_controller'],
+             'canadarm_joint_controller'],
         output='screen'
     )
 
@@ -87,7 +86,7 @@ def generate_launch_description():
         package="mppi_controller",
         executable="canadarm_controller_node",
         output='screen',
-        parameters=[{'config_file': 'reach_floating.yaml'}]
+        parameters=[{'config_file': 'reach.yaml'}]
     )
 
     # Target spawn
@@ -110,6 +109,35 @@ def generate_launch_description():
         actions=[ets_vii_tumbling]
     )
 
+    # Debris spawn
+    sphere_sdf_path = os.path.join(simulation_models_path, 'models', 'sphere', 'sphere.sdf')
+    debris_list = [
+        {'name': 'ball1', 'x': '-3.0', 'y': '-2.0', 'z': '6.0'},
+        {'name': 'ball2', 'x': '2.0',  'y': '1.0',  'z': '5.0'},
+    ]
+
+    debris_spawn_node = []
+    for debris in debris_list:
+        debris_spawn_node.append(
+            Node(package='ros_ign_gazebo',
+                executable='create',
+                name=f"spawn_{debris['name']}",
+                arguments=[
+                    '-file', sphere_sdf_path,
+                    '-name', debris['name'],
+                    '-x', debris['x'], '-y', debris['y'], '-z', debris['z']
+                ],
+                output='screen'
+            )
+        )
+    
+    debris_pose_publisher = Node(
+        package='ros_gz_bridge',
+        executable='parameter_bridge',
+        arguments=['/world/default/dynamic_pose/info@geometry_msgs/msg/PoseArray@ignition.msgs.Pose_V'],
+    )
+
+
     return LaunchDescription([
         start_world,
         robot_state_publisher,
@@ -118,6 +146,8 @@ def generate_launch_description():
         spawn,
         ets_vii_target_spawn,
         delay_ets_vii_tumbling,
+        *debris_spawn_node,
+        debris_pose_publisher,
 
         RegisterEventHandler(
             OnProcessExit(

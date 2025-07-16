@@ -22,7 +22,7 @@ from rclpy.qos import ReliabilityPolicy
 
 # ROS2 Messages
 from control_msgs.msg import DynamicJointState
-from geometry_msgs.msg import TransformStamped, PoseStamped
+from geometry_msgs.msg import TransformStamped, PoseStamped, PoseArray
 from std_msgs.msg import Float64MultiArray, Bool
 from rosgraph_msgs.msg import Clock
 
@@ -96,6 +96,7 @@ class MppiSolverNode(Node):
         self.base_state_subscriber = self.create_subscription(TransformStamped, '/model/canadarm/pose', self.model_state_callback, subscribe_qos_profile2)
         self.target_state_subscriber = self.create_subscription(TransformStamped, '/model/ets_vii/pose', self.target_state_callback, subscribe_qos_profile)
         self.sim_clock_subscriber = self.create_subscription(Clock, '/world/default/clock', self.sim_clock_callback, subscribe_qos_profile)
+        self.collision_target_subscriber = self.create_subscription(PoseArray, '/world/default/dynamic_pose/info', self.collision_target_callback, subscribe_qos_profile)
 
         # publisher
         cal_timer_period = params['ros2_node']['cal_timer_period'] 
@@ -124,6 +125,10 @@ class MppiSolverNode(Node):
 
         # TEST
         self.tmp = None
+        self.collision_targets = torch.tensor([[0.0, 0.0, 0.0]])
+        self.init_collision_targets = torch.tensor([[-3.0, -2.0,  6.0], [ 2.0,  1.0,  5.0]])
+        self.init_tolerance = 1e-3
+        self.collision_target_indices = None
 
 
     def cal_timer_callback(self):
@@ -146,9 +151,6 @@ class MppiSolverNode(Node):
             qdes, vdes = self.controller.compute_control_input()
             self.qdes = qdes.clone().cpu().numpy()
             self.vdes = vdes.clone().cpu().numpy()
-            # self._logger.info(f"joint_skew    : {self.canadarmWrapper.state.J}")
-            # self._logger.info(f"joint_autograd: {self.controller.cost_manager.disturbace_cost.js_auto}")
-            # self._logger.info(f"error: {self.canadarmWrapper.state.J - self.controller.cost_manager.disturbace_cost.js_auto.cpu().numpy()}")
         return
 
 
@@ -220,7 +222,6 @@ class MppiSolverNode(Node):
                 self.is_target = True
         return
     
-
     def model_state_callback(self, msg):
         if msg.header.frame_id == "default":
             if msg.child_frame_id == "canadarm":
@@ -233,6 +234,18 @@ class MppiSolverNode(Node):
         self.sim_time.time = msg.clock
         return
     
+    def collision_target_callback(self, msg):
+        if self.collision_target_indices is None:
+            self.collision_positions = torch.tensor(
+                [[pose.position.x, pose.position.y, pose.position.z] for pose in msg.poses])
+            dist_matrix = torch.cdist(self.collision_positions, self.init_collision_targets, p=2)
+            self.collision_target_indices = torch.argmin(dist_matrix, dim=0)
+        else:
+            self.collision_positions = torch.tensor([[pose.position.x, pose.position.y, pose.position.z] for pose in msg.poses])
+            self.collision_targets = self.collision_positions[self.collision_target_indices]
+            self.controller.set_collision_target(self.collision_targets)
+        return
+
 
 def main():
     rclpy.init()

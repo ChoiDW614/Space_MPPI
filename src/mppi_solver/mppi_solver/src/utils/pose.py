@@ -75,11 +75,11 @@ class Pose():
     def z(self, value):
         self.__pose[2] = value
 
-    def tf_matrix(self, device = None):
-        if device is None:
+    def tf_matrix(self, tensor_args = None):
+        if tensor_args is None:
             matrix = torch.eye(4)
         else:
-            matrix = torch.eye(4, device=device)
+            matrix = torch.eye(4, **tensor_args)
         matrix[0:3, 0:3] = quaternion_to_matrix(self.__orientation)
         matrix[0:3, 3] = self.__pose
         return matrix
@@ -111,7 +111,6 @@ class Pose():
         new_pose.orientation = self.__orientation.clone()
         return new_pose
 
-    
 
 def pose_diff(ppos1: Pose, ppose2: Pose):
     pose_difference = torch.sum(torch.abs(ppos1.pose - ppose2.pose))

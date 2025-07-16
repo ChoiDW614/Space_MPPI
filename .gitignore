@@ -1,4 +1,5 @@
 .vscode/
+.ros/
 build/
 install/
 log/

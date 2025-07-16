@@ -110,6 +110,34 @@ def generate_launch_description():
         actions=[ets_vii_tumbling]
     )
 
+    # Debris spawn
+    sphere_sdf_path = os.path.join(simulation_models_path, 'models', 'sphere', 'sphere.sdf')
+    debris_list = [
+        {'name': 'ball1', 'x': '-3.0', 'y': '-2.0', 'z': '6.0'},
+        {'name': 'ball2', 'x': '2.0',  'y': '1.0',  'z': '5.0'},
+    ]
+
+    debris_spawn_node = []
+    for debris in debris_list:
+        debris_spawn_node.append(
+            Node(package='ros_ign_gazebo',
+                executable='create',
+                name=f"spawn_{debris['name']}",
+                arguments=[
+                    '-file', sphere_sdf_path,
+                    '-name', debris['name'],
+                    '-x', debris['x'], '-y', debris['y'], '-z', debris['z']
+                ],
+                output='screen'
+            )
+        )
+    
+    debris_pose_publisher = Node(
+        package='ros_gz_bridge',
+        executable='parameter_bridge',
+        arguments=['/world/default/dynamic_pose/info@geometry_msgs/msg/PoseArray@ignition.msgs.Pose_V'],
+    )
+
     return LaunchDescription([
         start_world,
         robot_state_publisher,
@@ -118,6 +146,8 @@ def generate_launch_description():
         spawn,
         ets_vii_target_spawn,
         delay_ets_vii_tumbling,
+        *debris_spawn_node,
+        debris_pose_publisher,
 
         RegisterEventHandler(
             OnProcessExit(
