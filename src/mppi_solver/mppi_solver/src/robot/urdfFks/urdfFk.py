@@ -6,11 +6,14 @@ import mppi_solver.src.robot.urdfFks.urdfparser as u2c
 
 from rclpy.logging import get_logger
 
+
 class LinkNotInURDFError(Exception):
     pass
 
 class URDFForwardKinematics():
     def __init__(self, urdf: str, root_link: str, end_links: List[str], base_type: str = "holonomic"):
+        self.logger = get_logger("urdf_parser")
+
         self._urdf = urdf
         self._root_link = root_link
         self._end_links = end_links
@@ -49,6 +52,8 @@ class URDFForwardKinematics():
         base_move : bool = False
     ) -> torch.Tensor:
         
+        tf_list = []
+
         if init_transformation is None:
             init_transformation = torch.eye(4, device=q.device)
         
@@ -63,19 +68,26 @@ class URDFForwardKinematics():
         if parent_link == self._root_link:
             tf_parent = torch.eye(4, device=q.device).expand(self.robot._n_samples, self.robot._n_timestep, 4, 4).clone()
         else:
-            tf_parent = self.robot.forward_kinematics(q, free_floating, base_move)
+            tf_parent, tf_list = self.robot.forward_kinematics(q, free_floating, base_move)
             tf_parent = init_transformation @ self._mount_transformation @ tf_parent
 
         if child_link == self._root_link:
             tf_child = torch.eye(4, device=q.device).expand(self.robot._n_samples, self.robot._n_timestep, 4, 4).clone()
         else:
-            tf_child = self.robot.forward_kinematics(q, free_floating, base_move)
+            tf_child, tf_list = self.robot.forward_kinematics(q, free_floating, base_move)
             tf_child = init_transformation @ self._mount_transformation @ tf_child
 
-        tf_parent_inv = torch.linalg.inv(tf_parent)
+        
+        # self.logger.info(f"Parent TF {tf_parent}")
+        # tf_paret = torch.eye
+
+        for i in range(len(tf_list)):
+            tf_list[i] = init_transformation @ self._mount_transformation @ tf_list[i] 
+            # self.logger.info(f"TF : {tf_list[i]}")
+        tf_parent_inv = torch.linalg.inv(tf_parent)  
         tf_parent_child = tf_parent_inv @ tf_child
 
-        return tf_parent_child
+        return tf_parent_child, tf_list
 
 
     def forward_kinematics_cpu(self,
@@ -86,6 +98,7 @@ class URDFForwardKinematics():
         free_floating: bool = False,
         base_move : bool = False
     ) -> torch.Tensor:
+        tf_list =[]
         if init_transformation is None:
             init_transformation = torch.eye(4)
         
@@ -100,17 +113,20 @@ class URDFForwardKinematics():
         if parent_link == self._root_link:
             tf_parent = torch.eye(4).clone()
         else:
-            tf_parent = self.robot.forward_kinematics_cpu(q, free_floating, base_move)
+            tf_parent, tf_list = self.robot.forward_kinematics_cpu(q, free_floating, base_move)
             tf_parent = init_transformation @ self._mount_transformation_cpu @ tf_parent
 
         if child_link == self._root_link:
             tf_child = torch.eye(4).clone()
         else:
-            tf_child = self.robot.forward_kinematics_cpu(q, free_floating, base_move)
+            tf_child, tf_list = self.robot.forward_kinematics_cpu(q, free_floating, base_move)
             tf_child = init_transformation @ self._mount_transformation_cpu @ tf_child
-
+        
+        for i in range(len(tf_list)):
+            tf_list[i] = init_transformation @ self._mount_transformation_cpu @ tf_list[i] 
+        
         tf_parent_inv = torch.linalg.inv(tf_parent)
         tf_parent_child = tf_parent_inv @ tf_child
 
-        return tf_parent_child
+        return tf_parent_child, tf_list
     

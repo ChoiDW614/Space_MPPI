@@ -130,6 +130,7 @@ class MPPI():
         self.uSamples = None
         self.param_gamma = self._lambda * (1.0 - 0.9)
         self.is_reaching = False
+        self.calc_jacob = CanadarmJacob()
 
         # Log
         self.sim_time = Time()
@@ -180,7 +181,7 @@ class MPPI():
         noise = self.sample_gen.sampling()
         v = u + noise
         qSamples = self.sample_gen.get_sample_joint(v, self._q, self._qdot, self.dt).to(**self.tensor_args)
-        trajectory, link_list = self.fk_canadarm.forward_kinematics(qSamples, 'EE_SSRMS_tip', 'Base_SSRMS', self.base_pose.tf_matrix(self.device), 
+        trajectory, link_list = self.fk_canadarm.forward_kinematics(qSamples, 'EE_SSRMS_tip', 'Base_SSRMS', self.base_pose.tf_matrix(self.tensor_args), 
                                                          free_floating=self.is_free_floating, base_move=self.is_base_move)
         
         # self.logger.info(f"base: {self.base_pose.np_pose}, {self.base_pose.np_rpy}")
@@ -222,7 +223,7 @@ class MPPI():
         q_prev = self.sample_gen.get_prev_sample_joint(self.u_prev, self._q, self._qdot, self.dt)
         self.fk_canadarm.robot._n_samples = 1
         ee_traj_prev,_ = self.fk_canadarm.forward_kinematics(q_prev, 'EE_SSRMS_tip', 'Base_SSRMS', \
-                       self.base_pose.tf_matrix(self.device), free_floating=self.is_free_floating, base_move=self.is_base_move)
+                       self.base_pose.tf_matrix(self.tensor_args), free_floating=self.is_free_floating, base_move=self.is_base_move)
         ee_traj_prev = ee_traj_prev.squeeze(0).cpu()
         self.fk_canadarm.robot._n_samples = self.n_samples
 

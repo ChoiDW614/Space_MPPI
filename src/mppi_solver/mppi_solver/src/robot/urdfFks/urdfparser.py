@@ -125,6 +125,8 @@ class URDFparser(object):
 
         tf_fk = self._tf_fk.expand(self._n_samples, self._n_timestep, 4, 4).to(device=q.device).clone()
 
+        tf_list = []
+
         if free_floating and base_move:
                 tf_base = transformation_matrix_from_xyzrpy(q=q[:,:,:self._n_mobile_dof])
                 tf_fk = tf_fk @ tf_base
@@ -159,8 +161,8 @@ class URDFparser(object):
             else:
                 tf_local = make_transform_matrix(xyz, rpy).to(device=q.device)
                 tf_fk = tf_fk @ tf_local
-
-        return tf_fk
+            tf_list.append(tf_fk)
+        return tf_fk, tf_list
 
 
     def forward_kinematics_cpu(self, q: torch.Tensor, free_floating: bool = False, base_move : bool = False):
@@ -168,6 +170,7 @@ class URDFparser(object):
             raise ValueError("Robot description not loaded.") 
 
         tf_fk = self._tf_fk.clone()
+        tf_list = []
 
         if free_floating and base_move:
             tf_base = transformation_matrix_from_xyzrpy_cpu(q=q[:self._n_mobile_dof])
@@ -203,6 +206,5 @@ class URDFparser(object):
             else:
                 tf_local = make_transform_matrix(xyz, rpy)
                 tf_fk = tf_fk @ tf_local
-
-        return tf_fk
- 
+            tf_list.append(tf_fk)
+        return tf_fk, tf_list
