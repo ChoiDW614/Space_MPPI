@@ -21,8 +21,9 @@ from mppi_solver.src.solver.sampling.standard_normal_noise import StandardSampli
 # Cost Library
 from mppi_solver.src.solver.cost.cost_manager import CostManager
 
-# FK Library
+# Kinematics Library
 from mppi_solver.src.robot.urdfFks.urdfFk import URDFForwardKinematics
+from mppi_solver.src.robot.ik.canadarm_jacob import CanadarmJacob
 
 # TF Library
 from mppi_solver.src.utils.pose import Pose, pose_diff, pos_diff
@@ -145,11 +146,14 @@ class MPPI():
         
 
     def check_reach(self):
-        self.ee_pose.from_matrix(self.fk_canadarm.forward_kinematics_cpu(self._q[self.n_mobile_dof:], 
+        ee_pose_mat, tf_list = self.fk_canadarm.forward_kinematics_cpu(self._q[self.n_mobile_dof:], 
                                 'EE_SSRMS_tip', 'Base_SSRMS', init_transformation=self.base_pose.tf_matrix(),
-                                free_floating=self.is_free_floating, base_move=self.is_base_move))
-        
+                                free_floating=self.is_free_floating, base_move=self.is_base_move)
+        _ = self.calc_jacob.compute_jacobian_cpu(tf_list)      
+        self.ee_pose.from_matrix(ee_pose_mat)
+
         # self.logger.info(f"ee pose            : {self.ee_pose.np_pose}")
+
         pose_err = pos_diff(self.ee_pose, self.target_pose)
         ee_ori_mat = euler_angles_to_matrix(self.ee_pose.rpy, "ZYX")
         target_ori_mat = euler_angles_to_matrix(self.target_pose.rpy, "ZYX")
@@ -176,7 +180,7 @@ class MPPI():
         noise = self.sample_gen.sampling()
         v = u + noise
         qSamples = self.sample_gen.get_sample_joint(v, self._q, self._qdot, self.dt).to(**self.tensor_args)
-        trajectory = self.fk_canadarm.forward_kinematics(qSamples, 'EE_SSRMS_tip', 'Base_SSRMS', self.base_pose.tf_matrix(self.tensor_args), 
+        trajectory, link_list = self.fk_canadarm.forward_kinematics(qSamples, 'EE_SSRMS_tip', 'Base_SSRMS', self.base_pose.tf_matrix(self.device), 
                                                          free_floating=self.is_free_floating, base_move=self.is_base_move)
         
         # self.logger.info(f"base: {self.base_pose.np_pose}, {self.base_pose.np_rpy}")
@@ -217,8 +221,9 @@ class MPPI():
     def MATLAB_log(self):
         q_prev = self.sample_gen.get_prev_sample_joint(self.u_prev, self._q, self._qdot, self.dt)
         self.fk_canadarm.robot._n_samples = 1
-        ee_traj_prev = self.fk_canadarm.forward_kinematics(q_prev, 'EE_SSRMS_tip', 'Base_SSRMS', \
-                       self.base_pose.tf_matrix(self.tensor_args), free_floating=self.is_free_floating, base_move=self.is_base_move).squeeze(0).cpu()
+        ee_traj_prev,_ = self.fk_canadarm.forward_kinematics(q_prev, 'EE_SSRMS_tip', 'Base_SSRMS', \
+                       self.base_pose.tf_matrix(self.device), free_floating=self.is_free_floating, base_move=self.is_base_move)
+        ee_traj_prev = ee_traj_prev.squeeze(0).cpu()
         self.fk_canadarm.robot._n_samples = self.n_samples
 
         prev_stage_cost     = self.cost_manager.pose_cost.compute_prev_stage_cost(ee_traj_prev, self.target_pose)
