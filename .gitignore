@@ -4,3 +4,5 @@ build/
 install/
 log/
 src/mppi_solver/mppi_solver/runs/
+*.pyc
+__pycache__/
