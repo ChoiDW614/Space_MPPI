@@ -70,7 +70,7 @@ class MPPI():
         self._qddot = torch.zeros(self.n_action, **self.tensor_args)
 
         self.q_prev = torch.zeros(self.n_action, **self.tensor_args)
-        self.v_prevv = torch.zeros(self.n_action, **self.tensor_args)
+        self.v_prev = torch.zeros(self.n_action, **self.tensor_args)
 
         self.ee_pose = Pose()
         self.eefTraj = torch.zeros((self.n_samples, self.n_horizen, 4, 4), **self.tensor_args)
@@ -138,7 +138,7 @@ class MPPI():
         self.matlab_logger.create_dataset(dataset_name="end_effector_pose", shape=7)
         self.matlab_logger.create_dataset(dataset_name="pos_err", shape=4)
         self.matlab_logger.create_dataset(dataset_name="ori_err", shape=4)
-        self.matlab_logger.create_dataset(dataset_name="cost", shape=8)
+        self.matlab_logger.create_dataset(dataset_name="cost", shape=10)
         self.matlab_logger.create_dataset(dataset_name="sigma", shape=(self.n_action+1))
 
         self.reference_joint = None
@@ -153,17 +153,12 @@ class MPPI():
         _ = self.calc_jacob.compute_jacobian_cpu(tf_list)      
         self.ee_pose.from_matrix(ee_pose_mat)
 
-        # self.logger.info(f"ee pose            : {self.ee_pose.np_pose}")
-
         pose_err = pos_diff(self.ee_pose, self.target_pose)
         ee_ori_mat = euler_angles_to_matrix(self.ee_pose.rpy, "ZYX")
         target_ori_mat = euler_angles_to_matrix(self.target_pose.rpy, "ZYX")
         diff_ori_mat = torch.matmul(torch.linalg.inv(ee_ori_mat), target_ori_mat)
         diff_ori_quat = matrix_to_quaternion(diff_ori_mat)
         self.diff_ori_3d = matrix_to_euler_angles(diff_ori_mat, "ZYX")
-
-        # self.logger.info(f"Pose Err : {pose_err}")
-        # self.logger.info(f"Ori Err : {self.diff_ori_3d}")
 
         if pose_err < 0.005:
             return True
@@ -191,6 +186,7 @@ class MPPI():
         self.cost_manager.update_covar_cost(u, v, self.sample_gen.sigma_matrix)
         self.cost_manager.update_base_cost(self.base_pose, self._q)
         self.cost_manager.update_collision_cost(self.collision_target)
+        self.cost_manager.update_stop_cost(self.v_prev)
 
         S = self.cost_manager.compute_all_cost()
 
@@ -220,9 +216,9 @@ class MPPI():
     
 
     def MATLAB_log(self):
-        q_prev = self.sample_gen.get_prev_sample_joint(self.u_prev, self._q, self._qdot, self.dt)
+        q_prev, self.v_prev = self.sample_gen.get_prev_sample_joint(self.u_prev, self._q, self._qdot, self.dt)
         self.fk_canadarm.robot._n_samples = 1
-        ee_traj_prev,_ = self.fk_canadarm.forward_kinematics(q_prev, 'EE_SSRMS_tip', 'Base_SSRMS', \
+        ee_traj_prev, _ = self.fk_canadarm.forward_kinematics(q_prev, 'EE_SSRMS_tip', 'Base_SSRMS', \
                        self.base_pose.tf_matrix(self.tensor_args), free_floating=self.is_free_floating, base_move=self.is_base_move)
         ee_traj_prev = ee_traj_prev.squeeze(0).cpu()
         self.fk_canadarm.robot._n_samples = self.n_samples
@@ -234,7 +230,9 @@ class MPPI():
         prev_action_cost    = self.cost_manager.action_cost.compute_prev_action_cost(self.u_prev)
         prev_covar_cost     = self.cost_manager.covar_cost.compute_prev_covar_cost(self.sample_gen.sigma_matrix, self.u_prev, self.noise_prev)
         prev_collision_cost = self.cost_manager.collision_cost.compute_prev_collision_cost(self.base_pose, q_prev, self.collision_target)
-
+        prev_stop_cost      = self.cost_manager.stop_cost.compute_prev_stop_cost(self.u_prev, self.v_prev)
+        prev_zero_cost      = self.cost_manager.zero_cost.compute_prev_zero_cost(self.u_prev, self.v_prev, ee_traj_prev, self.target_pose)
+        
         mean_prev_stage_cost     = torch.mean(prev_stage_cost)
         mean_prev_terminal_cost  = torch.mean(prev_terminal_cost)
         mean_prev_centering_cost = torch.mean(prev_centering_cost)
@@ -242,7 +240,9 @@ class MPPI():
         mean_prev_action_cost    = torch.mean(prev_action_cost)
         mean_prev_covar_cost     = torch.mean(prev_covar_cost)
         mean_prev_collision_cost = torch.mean(prev_collision_cost)
-
+        mean_prev_stop_cost      = torch.mean(prev_stop_cost)
+        mean_prev_zero_cost      = torch.mean(prev_zero_cost)
+        
         self.matlab_logger.log("end_effector_pose", [self.sim_time.time] + self.ee_pose.np_pose.tolist() + self.ee_pose.np_rpy.tolist())
         self.matlab_logger.log("pos_err", [self.sim_time.time] + (self.ee_pose.np_pose - self.target_pose.np_pose).tolist())
         self.matlab_logger.log("ori_err", [self.sim_time.time] + self.diff_ori_3d.tolist())
@@ -252,7 +252,9 @@ class MPPI():
                                                                mean_prev_tracking_cost.item(),
                                                                mean_prev_action_cost.item(),
                                                                mean_prev_covar_cost.item(),
-                                                               mean_prev_collision_cost.item()])
+                                                               mean_prev_collision_cost.item(),
+                                                               mean_prev_stop_cost.item(),
+                                                               mean_prev_zero_cost.item()])
         self.matlab_logger.log("sigma", [self.sim_time.time] + torch.diag(self.sample_gen.sigma).tolist())
         return
     

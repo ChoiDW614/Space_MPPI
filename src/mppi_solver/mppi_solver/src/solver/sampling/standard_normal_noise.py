@@ -51,6 +51,7 @@ class StandardSampling:
 
     def sampling(self):
         standard_normal_noise = torch.randn(self.n_sample, self.n_horizon, self.n_action, **self.tensor_args)
+        # standard_normal_noise = torch.randn(self.n_sample, 1, self.n_action, **self.tensor_args).repeat(1, self.n_horizon, 1)
         self.sigma_matrix = self.sigma.expand(self.n_sample, self.n_horizon, -1, -1)
         noise = torch.matmul(standard_normal_noise.unsqueeze(-2), self.sigma_matrix).squeeze(-2)
         return noise
@@ -79,7 +80,7 @@ class StandardSampling:
 
         dq = v_prev * dt + 0.5 * u_prev * dt**2
         q = torch.cumsum(dq, dim=0) + q0
-        return q.unsqueeze(0)
+        return q.unsqueeze(0), v_prev
     
     
     def update_distribution(self, u: torch.Tensor, v: torch.Tensor, w: torch.Tensor, noise: torch.Tensor):
