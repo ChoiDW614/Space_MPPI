@@ -1,12 +1,12 @@
 import torch
+import time
 from rclpy.logging import get_logger
 
 from mppi_solver.src.solver.sampling.distribution_updaters import StandardUpdater, CMAESUpdater
 
-
-class StandardSampling:
+class SobolSampling:
     def __init__(self, params, tensor_args):
-        self.logger = get_logger("Standard_Sampling")
+        self.logger = get_logger("Sobol_Sampling")
 
         # Torch GPU
         self.tensor_args = tensor_args
@@ -15,6 +15,14 @@ class StandardSampling:
         self.n_sample  = params['mppi']['sample']
         self.n_horizon = params['mppi']['horizon']
         self.n_action  = params['mppi']['action']
+        self.n_total_sample = self.n_sample * self.n_horizon * self.n_action
+
+        self.seed = params['sample']['seed']
+        if self.seed == 0:
+            self.seed = time.time_ns()
+
+        # Sobol sequence
+        self.sobol_engine = torch.quasirandom.SobolEngine(dimension=3, scramble=False, seed=self.seed)
 
         self.sigma_scale: float = params['sample']['sigma_scale']
         self.sigma: torch.Tensor = torch.eye((self.n_action), **self.tensor_args) * self.sigma_scale
@@ -35,14 +43,15 @@ class StandardSampling:
                 self.step_size_cov = params['sample']['standard']['step_size_cov']
                 self.updater = StandardUpdater(self.n_sample, self.n_horizon, self.step_size_cov)
         return
-
+    
 
     def sampling(self):
-        standard_normal_noise = torch.randn(self.n_sample, self.n_horizon, self.n_action, **self.tensor_args)
-        # standard_normal_noise = torch.randn(self.n_sample, 1, self.n_action, **self.tensor_args).repeat(1, self.n_horizon, 1)
+        sobol_points = self.sobol_engine.draw(self.n_total_sample).to(**self.tensor_args)
+        sobol_noise = sobol_points[:,0].reshape(self.n_sample, self.n_horizon, self.n_action)
+
         self.sigma_matrix = self.sigma.expand(self.n_sample, self.n_horizon, -1, -1)
-        noise = torch.matmul(standard_normal_noise.unsqueeze(-2), self.sigma_matrix).squeeze(-2)
-        return noise
+        sobol_noise = torch.matmul(sobol_noise.unsqueeze(-2), self.sigma_matrix).squeeze(-2)
+        return sobol_noise
 
 
     def get_sample_joint(self, samples: torch.Tensor, q: torch.Tensor, qdot: torch.Tensor, dt):
@@ -66,8 +75,8 @@ class StandardSampling:
         q = torch.cumsum(dq, dim=0) + q0
         return q.unsqueeze(0), v_prev
 
-    
-    
+
+
     def update_distribution(self, u: torch.Tensor, v: torch.Tensor, w: torch.Tensor, noise: torch.Tensor):
         if self.sigma_update:
             self.sigma, self.sigma_matrix = self.updater.update(self.sigma, self.init_sigma, self.kappa_eye, u, v, w, noise)
@@ -75,11 +84,14 @@ class StandardSampling:
     
 
     def n_sample_sampling(self, n_sample):
-        standard_normal_noise = torch.randn(n_sample, self.n_horizon, self.n_action, **self.tensor_args)
-        return standard_normal_noise
-
+        n_total_sample = n_sample * self.n_horizon * self.n_action
+        sobol_points = self.sobol_engine.draw(n_total_sample).to(**self.tensor_args)
+        sobol_noise = sobol_points[:,0].reshape(n_sample, self.n_horizon, self.n_action)
+        return sobol_noise
+    
 
     def n_sample_horizon_sampling(self, n_sample, n_knot):
-        standard_normal_noise = torch.randn(n_sample, n_knot, self.n_action, **self.tensor_args)
-        return standard_normal_noise
-    
+        n_total_sample = n_sample * n_knot * self.n_action
+        sobol_points = self.sobol_engine.draw(n_total_sample).to(**self.tensor_args)
+        sobol_noise = sobol_points[:,0].reshape(n_sample, n_knot, self.n_action)
+        return sobol_noise

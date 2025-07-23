@@ -7,14 +7,14 @@ mppi:
   urdf_name: "floating_canadarm.urdf"
   controller_name: "/floating_canadarm_joint_controller"
   horizon: 32
-  sample: 1000
+  sample: 4096
   action: 13
   dt: 0.01
   free_floating: True
   base_move: True
   alpha: 0.1
   gamma: 0.98
-  _lambda: 0.1
+  _lambda: 0.07
   manipulator_dof: 7
   mobile_dof: 6
   joint_order: ["v_x_joint", "v_y_joint", "v_z_joint", "v_r_joint", "v_p_joint", "v_yaw_joint", 
@@ -31,30 +31,32 @@ cost:
     weight: 0.005
 
   action:
-    weight: 0.0005
+    weight: 0.0003
   
   joint_space:
     centering_weight: 1.0
     tracking_weight: 0.05
 
   collision:
-    weight: 100000.0
-    softcap: 0.5
+    weight: 10000.0
+    softcap: 0.4
 
   stop:
-    weight: 0.5
+    weight: 0.2
     v_max: [ 0.0698132, 0.0698132, 0.0698132, 0.0698132, 0.0698132, 0.0698132, 0.0698132 ]
-  
-  zero:
-    weight: 0.5
-    v_max: [ 0.0698132, 0.0698132, 0.0698132, 0.0698132, 0.0698132, 0.0698132, 0.0698132 ]
-    softcap: 0.5
+
+  end_effector:
+    weight: 0.2
+    distance_limit: 1.0
 
 sample:
   sigma_scale: 3.0
   kappa: 0.005
   sigma_update: true
   sigma_update_type: "CMA_ES"
+  seed: 0
+  bspline:
+    knot: 8
   standard:
     step_size_cov: 0.2
 

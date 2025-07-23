@@ -8,7 +8,7 @@ class SavGolFilter:
     def __init__(self):
         self.logger = get_logger("Savgol_Filter")
 
-    def savgol_filter_torch(self, sequence: torch.Tensor, window_size: int, polyorder: int) -> torch.Tensor:
+    def savgol_filter_torch(self, sequence: torch.Tensor, window_size: int, polyorder: int, tensor_args) -> torch.Tensor:
         """
         Apply Savitzky-Golay filter on GPU using PyTorch to each column of the input tensor.
 
@@ -23,7 +23,7 @@ class SavGolFilter:
         assert window_size % 2 == 1, "Window size must be odd."
         assert polyorder < window_size, "Polyorder must be less than window size."
 
-        device = sequence.device  # Get the device of the input tensor
+        self.tensor_args = tensor_args
 
         # Split sequence into v and w
         noise1 = sequence[:, 0]
@@ -42,7 +42,7 @@ class SavGolFilter:
                 raise ValueError(f"Padding ({padding}) is too large for data length ({data.size(0)}).")
 
             # Precompute Savitzky-Golay coefficients
-            x = torch.arange(-padding, padding + 1, dtype=torch.float32, device=device)
+            x = torch.arange(-padding, padding + 1, **self.tensor_args)
             A = torch.stack([x ** i for i in range(polyorder + 1)], dim=1)  # Vandermonde matrix
             ATA_inv = torch.linalg.inv(A.T @ A)
             coeffs = (ATA_inv @ A.T)[0]  # Savitzky-Golay filter coefficients for smoothing

@@ -54,3 +54,4 @@ class JointSpaceCost:
 
         cost_tracking = torch.sum(cost_tracking, dim=0)
         return cost_tracking
+    

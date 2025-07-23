@@ -7,8 +7,7 @@ from mppi_solver.src.solver.cost.joint_space_cost import JointSpaceCost
 from mppi_solver.src.solver.cost.base_disturbance_cost_exp import BaseDisturbanceCost
 from mppi_solver.src.solver.cost.collision_cost import CollisionAvoidanceCost
 from mppi_solver.src.solver.cost.stop_cost import StopCost
-from mppi_solver.src.solver.cost.zero_cost import ZeroCost
-
+from mppi_solver.src.solver.cost.ee_cost import EECost
 
 from mppi_solver.src.utils.pose import Pose
 
@@ -35,7 +34,7 @@ class CostManager:
         self.joint_space_weights = params['cost']['joint_space']    # Joint Space Cost Weights
         self.collision_weights = params['cost']['collision']        # Collision Avoidance Cost Weights
         self.stop_weights = params['cost']['stop']                  # Stop Cost Weights
-        self.zero_weights = params['cost']['zero']                  # zero Cost Weights
+        self.ee_weights = params['cost']['end_effector']            # End-effector Cost Weights
 
         # Cost Library
         self.pose_cost = PoseCost(self.pose_cost_weights, self.gamma, self.n_horizon, self.tensor_args)
@@ -45,7 +44,7 @@ class CostManager:
         self.disturbace_cost = BaseDisturbanceCost(self.n_action, self.tensor_args)
         self.collision_cost = CollisionAvoidanceCost(self.collision_weights, self.gamma, self.n_horizon, self.tensor_args)
         self.stop_cost = StopCost(self.stop_weights, self.gamma, self.n_horizon, self.dt, self.tensor_args)
-        self.zero_cost = ZeroCost(self.zero_weights, self.gamma, self.n_horizon, self.dt, self.tensor_args)
+        self.ee_cost = EECost(self.ee_weights, self.gamma, self.n_horizon, self.dt, self.tensor_args)
 
         # For Pose Cost
         self.target : Pose
@@ -68,8 +67,9 @@ class CostManager:
         # For Stop Cost
         self.v_prev : torch.Tensor
 
-        # For Stop Cost
-        self.goal_err : torch.Tensor
+        # For End-effector Cost
+        self.jacobian : torch.Tensor
+        self.target_dist : torch.Tensor
 
 
     def update_pose_cost(self, qSamples: torch.Tensor, uSamples: torch.Tensor, eef_trajectories: torch.Tensor, joint_trajectories: torch.Tensor,target: Pose):
@@ -94,8 +94,14 @@ class CostManager:
     def update_collision_cost(self, collision_target: torch.Tensor):
         self.collision_target = collision_target.clone()
 
+
     def update_stop_cost(self, v_prev: torch.Tensor):
         self.v_prev = v_prev.clone()
+
+
+    def update_ee_cost(self, jacobian: torch.Tensor, target_dist: torch.Tensor):
+        self.jacobian = jacobian.clone()
+        self.target_dist = target_dist.clone()
 
 
     def compute_all_cost(self):
@@ -105,11 +111,11 @@ class CostManager:
         S += self.pose_cost.compute_terminal_cost(self.eef_trajectories, self.target)
         # S += self.covar_cost.compute_covar_cost(self.sigma_matrix, self.u, self.v)
         # S += self.joint_cost.compute_centering_cost(self.qSamples)
-        # S += self.joint_cost.compute_jointTraj_cost(self.qSamples, self.joint_trajectories)
+        S += self.joint_cost.compute_jointTraj_cost(self.qSamples, self.joint_trajectories)
         S += self.action_cost.compute_action_cost(self.uSamples)
         S += self.collision_cost.compute_collision_cost(self.base_pose, self.qSamples, self.collision_target)
         # S += self.stop_cost.compute_stop_cost(self.uSamples, self.v_prev)
-        # S += self.zero_cost.compute_zero_cost(self.uSamples, self.v_prev, self.eef_trajectories)
+        S += self.ee_cost.compute_ee_cost(self.uSamples, self.v_prev, self.jacobian, self.target_dist)
 
         # self.disturbace_cost.compute_base_disturbance_cost(self.base_pose, self.test_joint, None, None)
         return S

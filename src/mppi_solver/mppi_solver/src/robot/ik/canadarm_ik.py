@@ -29,6 +29,8 @@ class IKSolver:
 
         self.robot = CanadarmWrapper(params)
         self.pgain = 100.0
+        self.k_null = 0.1
+        self.prev_trajectory = np.zeros((32, 7))
 
 
     def forward_kinematics(self, q, base_pose: Pose):
@@ -82,7 +84,8 @@ class IKSolver:
 
         return poseTraj
 
-    def get_ik_joint_trajectory(self, ctime, oMi_current,q_current, timewindow, dt):
+    def get_ik_joint_trajectory(self, ctime, oMi_current, q_current, timewindow, dt):
+        
         vel_traj = np.zeros((timewindow, 6))
         torch_joint_traj = torch.zeros((timewindow, self.robot.model.nq))
         pose_traj = []
@@ -106,8 +109,43 @@ class IKSolver:
             joint_traj.append(joint_traj[i] + qdot * dt)
             torch_joint_traj[i,:] = torch.tensor(joint_traj[i] + qdot * dt)
         
-        # self.logger.info(f"Joint Traj :{torch_joint_traj}")
-        
+        return torch_joint_traj
+    
+    def get_ik_joint_trajectory2(self, ctime, oMi_current, q_current, timewindow, dt):
+        vel_traj = np.zeros((timewindow, 6))
+        torch_joint_traj = torch.zeros((timewindow, self.robot.model.nq))
+        pose_traj = []
+        for i in range(timewindow):
+            c_time = ctime + i * dt
+            self.se3_traj.setCurrentTime(c_time)
+            se3_cubic = self.se3_traj.computeNext()
+            pose_traj.append(se3_cubic)
+            if i==0:
+                del_se3 = oMi_current.inverse() * se3_cubic
+            else:
+                del_se3 = pose_traj[i-1].inverse() * se3_cubic
+            
+            vel_traj[i,:] = self.pgain * pin.log(del_se3).vector
+
+        joint_traj = [q_current]
+        for i in range(timewindow):
+            q = joint_traj[-1]
+            self.robot.state.q = q
+            self.robot.state.v = np.zeros((self.robot.model.nq))
+            self.robot.computeAllTerms()
+            J = self.robot.state.J
+            qdot_p = np.linalg.pinv(J) @ vel_traj[i]
+            N = np.eye(self.robot.model.nq) - np.linalg.pinv(J) @ J
+            qdot_s = N @ (self.prev_trajectory[i,:] - q)
+            q_next = q + (qdot_p + self.k_null * qdot_s) * dt
+
+            q_next = (q_next + np.pi) % (2 * np.pi) - np.pi
+
+            joint_traj.append(q_next)
+            torch_joint_traj[i,:] = torch.tensor(q_next)
+
+        self.logger.info(f"{torch_joint_traj}")
+
         return torch_joint_traj
     
     def targetUpdate(self, target):
