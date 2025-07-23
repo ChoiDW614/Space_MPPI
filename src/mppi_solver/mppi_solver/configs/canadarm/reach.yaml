@@ -48,6 +48,9 @@ cost:
     weight: 0.175
     distance_limit: 1.5
 
+  reference:
+    weight: 1.0
+
 sample:
   sigma_scale: 3.0
   kappa: 0.005

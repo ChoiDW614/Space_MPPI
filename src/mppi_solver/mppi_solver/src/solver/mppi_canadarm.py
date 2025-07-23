@@ -138,7 +138,7 @@ class MPPI():
         self.matlab_logger.create_dataset(dataset_name="end_effector_pose", shape=7)
         self.matlab_logger.create_dataset(dataset_name="pos_err", shape=4)
         self.matlab_logger.create_dataset(dataset_name="ori_err", shape=4)
-        self.matlab_logger.create_dataset(dataset_name="cost", shape=10)
+        self.matlab_logger.create_dataset(dataset_name="cost", shape=11)
         self.matlab_logger.create_dataset(dataset_name="sigma", shape=(self.n_action+1))
 
         # test
@@ -187,12 +187,13 @@ class MPPI():
                                                          free_floating=self.is_free_floating, base_move=self.is_base_move)
         ee_jacobian = self.calc_jacob.compute_jacobian(link_list)     
 
-        self.cost_manager.update_pose_cost(qSamples, v, trajectory, self.reference_joint, self.target_pose)
+        self.cost_manager.update_pose_cost(qSamples, v, trajectory, self.reference_joint, self.reference_se3, self.target_pose)
         self.cost_manager.update_covar_cost(u, v, self.sample_gen.sigma_matrix)
         self.cost_manager.update_base_cost(self.base_pose, self._q)
         self.cost_manager.update_collision_cost(self.collision_target)
         self.cost_manager.update_stop_cost(self.v_prev)
         self.cost_manager.update_ee_cost(ee_jacobian, self.target_dist)
+        self.cost_manager.update_reference_cost(link_list[-2])
 
         S = self.cost_manager.compute_all_cost()
 
@@ -245,6 +246,7 @@ class MPPI():
         prev_collision_cost = self.cost_manager.collision_cost.compute_prev_collision_cost(self.base_pose, q_prev, self.collision_target)
         prev_stop_cost      = self.cost_manager.stop_cost.compute_prev_stop_cost(self.u_prev, self.v_prev)
         prev_ee_cost        = self.cost_manager.ee_cost.compute_prev_ee_cost(self.u_prev, self.v_prev, ee_jacobian_prev, self.target_dist)
+        prev_reference_cost = self.cost_manager.reference_cost.compute_prev_reference_cost(link_list_prev[-2], self.reference_se3)
         
         mean_prev_stage_cost     = torch.mean(prev_stage_cost)
         mean_prev_terminal_cost  = torch.mean(prev_terminal_cost)
@@ -255,6 +257,7 @@ class MPPI():
         mean_prev_collision_cost = torch.mean(prev_collision_cost)
         mean_prev_stop_cost      = torch.mean(prev_stop_cost)
         mean_prev_ee_cost        = torch.mean(prev_ee_cost)
+        mean_prev_reference_cost = torch.mean(prev_reference_cost)
         
         self.matlab_logger.log("end_effector_pose", [self.sim_time.time] + self.ee_pose.np_pose.tolist() + self.ee_pose.np_rpy.tolist())
         self.matlab_logger.log("pos_err", [self.sim_time.time] + (self.ee_pose.np_pose - self.target_pose.np_pose).tolist())
@@ -267,7 +270,8 @@ class MPPI():
                                                                mean_prev_covar_cost.item(),
                                                                mean_prev_collision_cost.item(),
                                                                mean_prev_stop_cost.item(),
-                                                               mean_prev_ee_cost.item()])
+                                                               mean_prev_ee_cost.item(),
+                                                               mean_prev_reference_cost.item()])
         self.matlab_logger.log("sigma", [self.sim_time.time] + torch.diag(self.sample_gen.sigma).tolist())
         return
     
@@ -294,8 +298,6 @@ class MPPI():
         self.collision_target = target.clone().to(**self.tensor_args)
         return
     
-    def setReference(self, reference_joint: torch.Tensor):
+    def setReference(self, reference_joint: torch.Tensor, reference_se3: torch.Tensor):
         self.reference_joint = reference_joint.clone()
-        # self.logger.info(f"{self.reference_joint.shape}")
-        # self.logger.info(f"{self.reference_joint}")
-        # self.reference_se3 = reference_se3.clone()
+        self.reference_se3 = reference_se3.clone()

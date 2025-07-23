@@ -146,8 +146,8 @@ class MppiSolverNode(Node):
             self.canadarmIK.targetUpdate(self.targetSE3 * self.canadarmWrapper.eef_to_tip.inverse())
             oMi = self.canadarmWrapper.iss_to_base * self.canadarmWrapper.state.oMi
             ctime = time.time()
-            jointTraj = self.canadarmIK.get_ik_joint_trajectory2(ctime, oMi, self.canadarmWrapper.state.q.copy(), 32, 0.01)
-            self.controller.setReference(jointTraj)
+            jointTraj, poseTraj = self.canadarmIK.get_ik_joint_trajectory2(ctime, oMi, self.canadarmWrapper.state.q.copy(), 32, 0.01)
+            self.controller.setReference(jointTraj, poseTraj)
             qdes, vdes = self.controller.compute_control_input()
             self.qdes = qdes.clone().cpu().numpy()
             self.vdes = vdes.clone().cpu().numpy()

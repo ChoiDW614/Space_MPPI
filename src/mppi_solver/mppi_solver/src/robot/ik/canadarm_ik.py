@@ -111,15 +111,18 @@ class IKSolver:
         
         return torch_joint_traj
     
+
     def get_ik_joint_trajectory2(self, ctime, oMi_current, q_current, timewindow, dt):
         vel_traj = np.zeros((timewindow, 6))
         torch_joint_traj = torch.zeros((timewindow, self.robot.model.nq))
+        torch_pose_traj = torch.empty((timewindow, 4, 4))
         pose_traj = []
         for i in range(timewindow):
             c_time = ctime + i * dt
             self.se3_traj.setCurrentTime(c_time)
             se3_cubic = self.se3_traj.computeNext()
             pose_traj.append(se3_cubic)
+            torch_pose_traj[i,:,:] = torch.from_numpy(pose_traj[i].homogeneous)
             if i==0:
                 del_se3 = oMi_current.inverse() * se3_cubic
             else:
@@ -144,10 +147,9 @@ class IKSolver:
             joint_traj.append(q_next)
             torch_joint_traj[i,:] = torch.tensor(q_next)
 
-        self.logger.info(f"{torch_joint_traj}")
-
-        return torch_joint_traj
+        return torch_joint_traj, torch_pose_traj
     
+
     def targetUpdate(self, target):
         self.se3_traj.setTargetSample(target)
     # def get_ik_joint_trajectory(self, ctime, oMi_current,q_current, timewindow, dt):

@@ -8,6 +8,7 @@ from mppi_solver.src.solver.cost.base_disturbance_cost_exp import BaseDisturbanc
 from mppi_solver.src.solver.cost.collision_cost import CollisionAvoidanceCost
 from mppi_solver.src.solver.cost.stop_cost import StopCost
 from mppi_solver.src.solver.cost.ee_cost import EECost
+from mppi_solver.src.solver.cost.reference_cost import ReferenceCost
 
 from mppi_solver.src.utils.pose import Pose
 
@@ -35,6 +36,7 @@ class CostManager:
         self.collision_weights = params['cost']['collision']        # Collision Avoidance Cost Weights
         self.stop_weights = params['cost']['stop']                  # Stop Cost Weights
         self.ee_weights = params['cost']['end_effector']            # End-effector Cost Weights
+        self.reference_weights = params['cost']['reference']        # End-effector Cost Weights
 
         # Cost Library
         self.pose_cost = PoseCost(self.pose_cost_weights, self.gamma, self.n_horizon, self.tensor_args)
@@ -45,11 +47,13 @@ class CostManager:
         self.collision_cost = CollisionAvoidanceCost(self.collision_weights, self.gamma, self.n_horizon, self.tensor_args)
         self.stop_cost = StopCost(self.stop_weights, self.gamma, self.n_horizon, self.dt, self.tensor_args)
         self.ee_cost = EECost(self.ee_weights, self.gamma, self.n_horizon, self.dt, self.tensor_args)
+        self.reference_cost = ReferenceCost(self.reference_weights, self.gamma, self.n_horizon, self.dt, self.tensor_args)
 
         # For Pose Cost
         self.target : Pose
         self.eef_trajectories : torch.Tensor
         self.joint_trajectories : torch.Tensor
+        self.pose_trajectories : torch.Tensor
         self.qSamples : torch.Tensor
         self.uSamples : torch.Tensor
 
@@ -70,14 +74,17 @@ class CostManager:
         # For End-effector Cost
         self.jacobian : torch.Tensor
         self.target_dist : torch.Tensor
+        self.link_list : torch.Tensor
 
 
-    def update_pose_cost(self, qSamples: torch.Tensor, uSamples: torch.Tensor, eef_trajectories: torch.Tensor, joint_trajectories: torch.Tensor,target: Pose):
+    def update_pose_cost(self, qSamples: torch.Tensor, uSamples: torch.Tensor,
+                         eef_trajectories: torch.Tensor, joint_trajectories: torch.Tensor, pose_trajectories: torch.Tensor, target: Pose):
         self.target = target.clone()
         self.qSamples = qSamples.clone()
         self.uSamples = uSamples.clone()
         self.eef_trajectories = eef_trajectories.clone()
         self.joint_trajectories = joint_trajectories.clone()
+        self.pose_trajectories = pose_trajectories.clone()
 
 
     def update_covar_cost(self, u: torch.Tensor, v: torch.Tensor, sigma_matrix: torch.Tensor):
@@ -103,6 +110,9 @@ class CostManager:
         self.jacobian = jacobian.clone()
         self.target_dist = target_dist.clone()
 
+    def update_reference_cost(self, link_list: torch.Tensor):
+        self.link_list = link_list.clone()
+
 
     def compute_all_cost(self):
         S = torch.zeros((self.n_sample), **self.tensor_args)
@@ -111,11 +121,12 @@ class CostManager:
         S += self.pose_cost.compute_terminal_cost(self.eef_trajectories, self.target)
         # S += self.covar_cost.compute_covar_cost(self.sigma_matrix, self.u, self.v)
         # S += self.joint_cost.compute_centering_cost(self.qSamples)
-        S += self.joint_cost.compute_jointTraj_cost(self.qSamples, self.joint_trajectories)
+        # S += self.joint_cost.compute_jointTraj_cost(self.qSamples, self.joint_trajectories)
         S += self.action_cost.compute_action_cost(self.uSamples)
         S += self.collision_cost.compute_collision_cost(self.base_pose, self.qSamples, self.collision_target)
         # S += self.stop_cost.compute_stop_cost(self.uSamples, self.v_prev)
         S += self.ee_cost.compute_ee_cost(self.uSamples, self.v_prev, self.jacobian, self.target_dist)
+        S += self.reference_cost.compute_reference_cost(self.link_list, self.pose_trajectories)
 
         # self.disturbace_cost.compute_base_disturbance_cost(self.base_pose, self.test_joint, None, None)
         return S
