@@ -49,7 +49,7 @@ cost:
     distance_limit: 1.5
 
   reference:
-    weight: 1.0
+    weight: 0.75
 
 sample:
   sigma_scale: 3.0

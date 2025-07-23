@@ -15,9 +15,8 @@ class StopCost:
         self.vmax = torch.tensor(self.v_max, **tensor_args).unsqueeze(0)
 
 
-    def compute_stop_cost(self, uSample: torch.Tensor, v_prev: torch.Tensor):
-        vel = v_prev[0].unsqueeze(0) + torch.cumsum(uSample * self.dt, dim=1)
-        abs_zero_vel = torch.clamp_min(torch.abs(vel) - self.vmax, min=0.0)
+    def compute_stop_cost(self, vSample: torch.Tensor):
+        abs_zero_vel = torch.clamp_min(torch.abs(vSample) - self.vmax, min=0.0)
 
         cost_stop = self.stop_weight * torch.norm(abs_zero_vel, p=2, dim=2)
 
@@ -28,9 +27,8 @@ class StopCost:
         return cost_stop
     
 
-    def compute_prev_stop_cost(self, uSample: torch.Tensor, v_prev: torch.Tensor):
-        vel = v_prev[0].unsqueeze(0) + torch.cumsum(uSample * self.dt, dim=0)
-        abs_zero_vel = torch.clamp_min(torch.abs(vel) - self.vmax, min=0.0)
+    def compute_prev_stop_cost(self, vSample: torch.Tensor):
+        abs_zero_vel = torch.clamp_min(torch.abs(vSample) - self.vmax, min=0.0)
 
         cost_stop = self.stop_weight * torch.norm(abs_zero_vel, p=2, dim=1)
 

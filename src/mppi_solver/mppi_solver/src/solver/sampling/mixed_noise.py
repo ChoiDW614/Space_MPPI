@@ -119,7 +119,7 @@ class MixedSampling:
 
         dq = v_prev * dt + 0.5 * samples * dt**2
         q = torch.cumsum(dq, dim=1) + q0
-        return q
+        return q, v
 
 
     def get_prev_sample_joint(self, u_prev: torch.Tensor, q: torch.Tensor, qdot: torch.Tensor, dt):

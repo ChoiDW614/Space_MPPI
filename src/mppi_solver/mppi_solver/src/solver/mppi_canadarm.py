@@ -182,27 +182,30 @@ class MPPI():
         u = self.u_prev.clone()
         noise = self.sample_gen.sampling(self._q)
         v = u + noise
-        qSamples = self.sample_gen.get_sample_joint(v, self._q, self._qdot, self.dt).to(**self.tensor_args)
-        trajectory, link_list = self.fk_canadarm.forward_kinematics(qSamples, 'EE_SSRMS_tip', 'Base_SSRMS', self.base_pose.tf_matrix(self.tensor_args), 
+        qSamples, vSamples = self.sample_gen.get_sample_joint(v, self._q, self._qdot, self.dt)
+        qSamples = qSamples.to(**self.tensor_args)
+        vSamples = vSamples.to(**self.tensor_args)
+        trajectory, link_list, com_list = self.fk_canadarm.forward_kinematics(qSamples, 'EE_SSRMS_tip', 'Base_SSRMS', self.base_pose.tf_matrix(self.tensor_args), 
                                                          free_floating=self.is_free_floating, base_move=self.is_base_move)
-        ee_jacobian = self.calc_jacob.compute_jacobian(link_list)     
+        jacob = self.calc_jacob.compute_jacobian(link_list)
+        # jacob_bm = self.calc_jacob.compute_jacob_bm(com_list, link_list) 
 
-        self.cost_manager.update_pose_cost(qSamples, v, trajectory, self.reference_joint, self.reference_se3, self.target_pose)
+        self.cost_manager.update_pose_cost(qSamples, v, vSamples, trajectory, self.reference_joint, self.reference_se3, self.target_pose)
         self.cost_manager.update_covar_cost(u, v, self.sample_gen.sigma_matrix)
         self.cost_manager.update_base_cost(self.base_pose, self._q)
         self.cost_manager.update_collision_cost(self.collision_target)
-        self.cost_manager.update_stop_cost(self.v_prev)
-        self.cost_manager.update_ee_cost(ee_jacobian, self.target_dist)
+        self.cost_manager.update_ee_cost(jacob, self.target_dist)
         self.cost_manager.update_reference_cost(link_list[-2])
+        # self.cost_manager.update_base_disturbance_cost(jacob_bm)
 
         S = self.cost_manager.compute_all_cost()
 
         w = self.compute_weights(S, self._lambda)
         # self.logger.info(f"{100*w[0:1024].sum():4}, {100*w[1024:2048].sum():4}, {100*w[2048:3072].sum():4}")
-        # w_max_idx = torch.argmax(w)
+        w_max_idx = torch.argmax(w)
         # self.logger.info(f"widx: {w_max_idx}")
         # self.logger.info(f"w: {w[w_max_idx]}")
-        # self.logger.info(f"noise: {noise[w_max_idx,:,:]}")
+        self.logger.info(f"noise: {noise[w_max_idx,:,:]}")
         w_expanded = w.view(-1, 1, 1)
         w_eps = torch.sum(w_expanded * noise, dim = 0)
         w_eps = self.svg_filter.savgol_filter_torch(w_eps, window_size=9, polyorder=2, tensor_args=self.tensor_args)
@@ -230,7 +233,7 @@ class MPPI():
     def MATLAB_log(self):
         q_prev, self.v_prev = self.sample_gen.get_prev_sample_joint(self.u_prev, self._q, self._qdot, self.dt)
         self.fk_canadarm.robot._n_samples = 1
-        ee_traj_prev, link_list_prev = self.fk_canadarm.forward_kinematics(q_prev, 'EE_SSRMS_tip', 'Base_SSRMS', \
+        ee_traj_prev, link_list_prev, com_list_prev = self.fk_canadarm.forward_kinematics(q_prev, 'EE_SSRMS_tip', 'Base_SSRMS', \
                        self.base_pose.tf_matrix(self.tensor_args), free_floating=self.is_free_floating, base_move=self.is_base_move)
         ee_traj_prev = ee_traj_prev.squeeze(0).cpu()
         self.fk_canadarm.robot._n_samples = self.n_samples
@@ -244,8 +247,8 @@ class MPPI():
         prev_action_cost    = self.cost_manager.action_cost.compute_prev_action_cost(self.u_prev)
         prev_covar_cost     = self.cost_manager.covar_cost.compute_prev_covar_cost(self.sample_gen.sigma_matrix, self.u_prev, self.noise_prev)
         prev_collision_cost = self.cost_manager.collision_cost.compute_prev_collision_cost(self.base_pose, q_prev, self.collision_target)
-        prev_stop_cost      = self.cost_manager.stop_cost.compute_prev_stop_cost(self.u_prev, self.v_prev)
-        prev_ee_cost        = self.cost_manager.ee_cost.compute_prev_ee_cost(self.u_prev, self.v_prev, ee_jacobian_prev, self.target_dist)
+        prev_stop_cost      = self.cost_manager.stop_cost.compute_prev_stop_cost(self.v_prev)
+        prev_ee_cost        = self.cost_manager.ee_cost.compute_prev_ee_cost(self.v_prev, ee_jacobian_prev, self.target_dist)
         prev_reference_cost = self.cost_manager.reference_cost.compute_prev_reference_cost(link_list_prev[-2], self.reference_se3)
         
         mean_prev_stage_cost     = torch.mean(prev_stage_cost)

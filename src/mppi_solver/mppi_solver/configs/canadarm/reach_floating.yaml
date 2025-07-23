@@ -14,7 +14,7 @@ mppi:
   base_move: False
   alpha: 0.1
   gamma: 0.98
-  _lambda: 0.07
+  _lambda: 0.06
   manipulator_dof: 7
   mobile_dof: 0
   joint_order: ["Base_Joint", "Shoulder_Roll", "Shoulder_Yaw", "Elbow_Pitch", "Wrist_Pitch", "Wrist_Yaw", "Wrist_Roll"]
@@ -22,31 +22,34 @@ mppi:
 cost:
   pose:
     stage_pose_weight: 40.0
-    stage_orientation_weight: 125.0
+    stage_orientation_weight: 150.0
     terminal_pose_weight: 75.0
-    terminal_orientation_weight: 250.0
+    terminal_orientation_weight: 300.0
 
   covariance: 
     weight: 0.005
 
   action:
-    weight: 0.0003
+    weight: 0.00025
   
   joint_space:
     centering_weight: 1.0
-    tracking_weight: 0.05
+    tracking_weight: 3.0
   
   collision:
     weight: 10000.0
     softcap: 0.4
-  
+
   stop:
-    weight: 0.2
+    weight: 0.1
     v_max: [ 0.0698132, 0.0698132, 0.0698132, 0.0698132, 0.0698132, 0.0698132, 0.0698132 ]
 
   end_effector:
-    weight: 0.2
-    distance_limit: 1.0
+    weight: 0.175
+    distance_limit: 1.5
+
+  reference:
+    weight: 0.75
 
 sample:
   sigma_scale: 3.0

@@ -27,6 +27,37 @@ class URDFForwardKinematics():
         self._mount_transformation = torch.eye(4)
         self._mount_transformation_cpu = torch.eye(4)
 
+        # Compute COM of Each Link
+        com_local_1 = torch.tensor([[0,0,-1,0.25082],
+                                    [0,1,0,0],
+                                    [1,0,0,-0.175],
+                                    [0,0,0,1]])
+        com_local_2 = torch.tensor([[1,0,0,0.175],
+                                    [0,1,0,0],
+                                    [0,0,1,-0.25082],
+                                    [0,0,0,1]])
+        com_local_3 = torch.tensor([[1,0,0,4.0],
+                                    [0,-1,0,0],
+                                    [0,0,-1,-0.175],
+                                    [0,0,0,1]])
+        com_local_4 = torch.tensor([[1,0,0,-3.6],
+                                    [0,1,0,0],
+                                    [0,0,1,-0.175],
+                                    [0,0,0,1]])
+        com_local_5 = torch.tensor([[1,0,0, 0],
+                                    [0,0,-1,0],
+                                    [0,1,0,0],
+                                    [0,0,0,1]])
+        com_local_6 = torch.tensor([[0,0,-1, 0],
+                                    [0,1,0,0],
+                                    [1,0,0,0],
+                                    [0,0,0,1]])
+        com_local_7 = torch.tensor([[0,0,1, 0],
+                                    [0,1,0,0],
+                                    [-1,0,0,-0.5],
+                                    [0,0,0,1]])
+        self.com_local_list = [com_local_1, com_local_2, com_local_3, com_local_4, com_local_5, com_local_6, com_local_7]
+
 
     def set_mount_transformation_deivce(self, device):
         self._mount_transformation = self._mount_transformation.to(device)
@@ -53,6 +84,7 @@ class URDFForwardKinematics():
     ) -> torch.Tensor:
         
         tf_list = []
+        com_list = []
 
         if init_transformation is None:
             init_transformation = torch.eye(4, device=q.device)
@@ -76,18 +108,19 @@ class URDFForwardKinematics():
         else:
             tf_child, tf_list = self.robot.forward_kinematics(q, free_floating, base_move)
             tf_child = init_transformation @ self._mount_transformation @ tf_child
-
         
         # self.logger.info(f"Parent TF {tf_parent}")
         # tf_paret = torch.eye
 
         for i in range(len(tf_list)):
             tf_list[i] = init_transformation @ self._mount_transformation @ tf_list[i] 
+            if i!= len(tf_list)-1:
+                com_list.append(torch.matmul(tf_list[i], (self.com_local_list[i].to(dtype=tf_list[i].dtype, device=tf_list[i].device)))[:,:,:3,3])
             # self.logger.info(f"TF : {tf_list[i]}")
         tf_parent_inv = torch.linalg.inv(tf_parent)  
         tf_parent_child = tf_parent_inv @ tf_child
 
-        return tf_parent_child, tf_list
+        return tf_parent_child, tf_list, com_list
 
 
     def forward_kinematics_cpu(self,

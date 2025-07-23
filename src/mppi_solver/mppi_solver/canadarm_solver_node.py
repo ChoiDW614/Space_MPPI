@@ -148,7 +148,10 @@ class MppiSolverNode(Node):
             ctime = time.time()
             jointTraj, poseTraj = self.canadarmIK.get_ik_joint_trajectory2(ctime, oMi, self.canadarmWrapper.state.q.copy(), 32, 0.01)
             self.controller.setReference(jointTraj, poseTraj)
+            time1 = time.time()
             qdes, vdes = self.controller.compute_control_input()
+            time2 = time.time()
+            self._logger.info(f"{time2 - time1}")
             self.qdes = qdes.clone().cpu().numpy()
             self.vdes = vdes.clone().cpu().numpy()
         return
