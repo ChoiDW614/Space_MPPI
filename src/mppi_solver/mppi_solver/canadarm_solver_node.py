@@ -151,7 +151,7 @@ class MppiSolverNode(Node):
             time1 = time.time()
             qdes, vdes = self.controller.compute_control_input()
             time2 = time.time()
-            self._logger.info(f"{time2 - time1}")
+            # self._logger.info(f"solver total time: {time2 - time1}")
             self.qdes = qdes.clone().cpu().numpy()
             self.vdes = vdes.clone().cpu().numpy()
         return

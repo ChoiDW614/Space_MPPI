@@ -9,6 +9,7 @@ class EECost:
         self.n_horizon = n_horizon
         self.gamma = gamma
         self.dt = dt
+        self.gamma_horizon_gpu = self.gamma ** torch.arange(self.n_horizon, **self.tensor_args)
 
         self.ee_weight = params['weight']
         self.distance_limit = params['distance_limit']
@@ -21,8 +22,7 @@ class EECost:
             ee_vel = torch.einsum('shja,sha->shj', jacobian, vSample)
             cost_ee = self.ee_weight * torch.norm(ee_vel, p=2, dim=2)
 
-            gamma = self.gamma ** torch.arange(self.n_horizon, **self.tensor_args)
-            cost_ee = cost_ee * gamma
+            cost_ee = cost_ee * self.gamma_horizon_gpu
 
             cost_ee = torch.sum(cost_ee, dim=1)
         else:
@@ -38,8 +38,7 @@ class EECost:
             ee_vel = torch.einsum('hja,ha->hj', jacobian, vSample)
             cost_ee = self.ee_weight * torch.norm(ee_vel, p=2, dim=1)
 
-            gamma = self.gamma ** torch.arange(self.n_horizon, **self.tensor_args)
-            cost_ee = cost_ee * gamma
+            cost_ee = cost_ee * self.gamma_horizon_gpu 
 
             cost_ee = torch.sum(cost_ee, dim=0)
         else:

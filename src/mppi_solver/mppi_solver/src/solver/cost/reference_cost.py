@@ -9,6 +9,7 @@ class ReferenceCost:
         self.n_horizon = n_horizon
         self.gamma = gamma
         self.dt = dt
+        self.gamma_horizon_gpu = self.gamma ** torch.arange(self.n_horizon, **self.tensor_args)
 
         self.reference_weight = params['weight']
 
@@ -19,8 +20,7 @@ class ReferenceCost:
 
         cost_reference = self.reference_weight * torch.norm(reference_diff, p='fro', dim=(2, 3))
 
-        gamma = self.gamma ** torch.arange(self.n_horizon, **self.tensor_args)
-        cost_reference = cost_reference * gamma
+        cost_reference = cost_reference * self.gamma_horizon_gpu
 
         cost_reference = torch.sum(cost_reference, dim=1)
         return cost_reference
@@ -31,8 +31,7 @@ class ReferenceCost:
         reference_diff = ee_joint.squeeze(0) - pose_trajectories
         cost_reference = self.reference_weight * torch.norm(reference_diff, p='fro', dim=(1, 2))
 
-        gamma = self.gamma ** torch.arange(self.n_horizon, **self.tensor_args)
-        cost_reference = cost_reference * gamma
+        cost_reference = cost_reference * self.gamma_horizon_gpu
 
         cost_reference = torch.sum(cost_reference, dim=0)
 

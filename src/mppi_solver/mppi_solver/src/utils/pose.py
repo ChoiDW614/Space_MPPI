@@ -2,9 +2,13 @@ import torch
 from mppi_solver.src.utils.rotation_conversions import quaternion_to_matrix, matrix_to_quaternion, matrix_to_euler_angles, quaternion_multiply, quaternion_invert
 
 class Pose():
-    def __init__(self):
-        self.__pose = torch.zeros(3)
-        self.__orientation = torch.tensor([0.0, 0.0, 0.0, 1.0])
+    def __init__(self, tensor_args=None):
+        if tensor_args is not None:
+            self.__pose = torch.zeros(3, **tensor_args)
+            self.__orientation = torch.tensor([0.0, 0.0, 0.0, 1.0], **tensor_args)
+        else:
+            self.__pose = torch.zeros(3)
+            self.__orientation = torch.tensor([0.0, 0.0, 0.0, 1.0])
         self.__tf = quaternion_to_matrix(self.__orientation)
 
     @property
@@ -37,11 +41,11 @@ class Pose():
 
     @property
     def np_pose(self):
-        return self.__pose.numpy()
+        return self.__pose.cpu().numpy()
     
     @property
     def np_orientation(self):
-        return self.__orientation.numpy()
+        return self.__orientation.cpu().numpy()
     
     @property
     def rpy(self):

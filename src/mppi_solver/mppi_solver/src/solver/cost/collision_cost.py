@@ -14,6 +14,7 @@ class CollisionAvoidanceCost():
         self.device = self.tensor_args['device']
         self.n_horizon = n_horizon
         self.gamma = gamma
+        self.gamma_horizon_gpu = self.gamma ** torch.arange(self.n_horizon, **self.tensor_args)
 
         self.collision_weight = params['weight']
         self.collision_softcap = params['softcap']
@@ -65,8 +66,7 @@ class CollisionAvoidanceCost():
         cost_collision = torch.sum(torch.max(self.zero, -torch.log(dist) + self.softcap), dim=(2,3))
         cost_collision = self.collision_weight * cost_collision
 
-        gamma = self.gamma ** torch.arange(self.n_horizon, **self.tensor_args)
-        cost_collision = cost_collision * gamma
+        cost_collision = cost_collision * self.gamma_horizon_gpu
 
         cost_collision = torch.sum(cost_collision, dim=1)
         return cost_collision
@@ -100,8 +100,7 @@ class CollisionAvoidanceCost():
         cost_collision = torch.sum(torch.max(self.zero, -torch.log(dist) + self.softcap), dim=(1, 2))
         cost_collision = self.collision_weight * cost_collision
 
-        gamma = self.gamma ** torch.arange(self.n_horizon, **self.tensor_args)
-        cost_collision = cost_collision * gamma
+        cost_collision = cost_collision * self.gamma_horizon_gpu
 
         cost_collision = torch.sum(cost_collision, dim=0)
         return cost_collision

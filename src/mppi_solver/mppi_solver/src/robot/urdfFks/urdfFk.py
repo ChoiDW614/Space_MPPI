@@ -72,7 +72,7 @@ class URDFForwardKinematics():
         self.robot._n_samples = n_samples
         self.robot._n_timestep = n_timesteps
         self.robot._n_mobile_dof = n_mobile_dof
-
+    
 
     def forward_kinematics(self,
         q: torch.Tensor,
@@ -82,7 +82,6 @@ class URDFForwardKinematics():
         free_floating: bool = False,
         base_move : bool = False
     ) -> torch.Tensor:
-        
         tf_list = []
         com_list = []
 
@@ -108,7 +107,7 @@ class URDFForwardKinematics():
         else:
             tf_child, tf_list = self.robot.forward_kinematics(q, free_floating, base_move)
             tf_child = init_transformation @ self._mount_transformation @ tf_child
-        
+
         # self.logger.info(f"Parent TF {tf_parent}")
         # tf_paret = torch.eye
 
@@ -117,6 +116,7 @@ class URDFForwardKinematics():
             if i!= len(tf_list)-1:
                 com_list.append(torch.matmul(tf_list[i], (self.com_local_list[i].to(dtype=tf_list[i].dtype, device=tf_list[i].device)))[:,:,:3,3])
             # self.logger.info(f"TF : {tf_list[i]}")
+
         tf_parent_inv = torch.linalg.inv(tf_parent)  
         tf_parent_child = tf_parent_inv @ tf_child
 

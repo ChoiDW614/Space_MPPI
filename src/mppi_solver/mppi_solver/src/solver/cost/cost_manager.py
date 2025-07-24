@@ -4,12 +4,11 @@ from mppi_solver.src.solver.cost.pose_cost import PoseCost
 from mppi_solver.src.solver.cost.covar_cost import CovarCost
 from mppi_solver.src.solver.cost.action_cost import ActionCost
 from mppi_solver.src.solver.cost.joint_space_cost import JointSpaceCost
-from mppi_solver.src.solver.cost.base_disturbance_cost_exp import BaseDisturbanceCost
 from mppi_solver.src.solver.cost.collision_cost import CollisionAvoidanceCost
 from mppi_solver.src.solver.cost.stop_cost import StopCost
 from mppi_solver.src.solver.cost.ee_cost import EECost
 from mppi_solver.src.solver.cost.reference_cost import ReferenceCost
-from mppi_solver.src.solver.cost.vel_cost import VelCost
+from mppi_solver.src.solver.cost.base_disturbance_cost import BaseDisturbanceCost
 
 from mppi_solver.src.utils.pose import Pose
 
@@ -30,26 +29,26 @@ class CostManager:
         self.dt = params['mppi']['dt']
 
         ## Weights
-        self.pose_cost_weights = params['cost']['pose']             # Pose Cost Weights
-        self.covar_weights = params['cost']['covariance']           # Covariance Cost Weights
-        self.action_weights = params['cost']['action']              # Action Cost Weights
-        self.joint_space_weights = params['cost']['joint_space']    # Joint Space Cost Weights
-        self.collision_weights = params['cost']['collision']        # Collision Avoidance Cost Weights
-        self.stop_weights = params['cost']['stop']                  # Stop Cost Weights
-        self.ee_weights = params['cost']['end_effector']            # End-effector Cost Weights
-        self.reference_weights = params['cost']['reference']        # End-effector Cost Weights
+        self.pose_cost_weights = params['cost']['pose']                     # Pose Cost Weights
+        self.covar_weights = params['cost']['covariance']                   # Covariance Cost Weights
+        self.action_weights = params['cost']['action']                      # Action Cost Weights
+        self.joint_space_weights = params['cost']['joint_space']            # Joint Space Cost Weights
+        self.collision_weights = params['cost']['collision']                # Collision Avoidance Cost Weights
+        self.stop_weights = params['cost']['stop']                          # Stop Cost Weights
+        self.ee_weights = params['cost']['end_effector']                    # End-effector Cost Weights
+        self.reference_weights = params['cost']['reference']                # Reference Cost Weights
+        self.base_disturbance_weights = params['cost']['base_disturbance']  # Reference Cost Weights
 
         # Cost Library
         self.pose_cost = PoseCost(self.pose_cost_weights, self.gamma, self.n_horizon, self.tensor_args)
         self.covar_cost = CovarCost(self.covar_weights, self._lambda, self.alpha, self.tensor_args)
         self.action_cost = ActionCost(self.action_weights, self.gamma, self.n_horizon, self.tensor_args)
         self.joint_cost = JointSpaceCost(self.joint_space_weights, self.gamma, self.n_horizon, self.tensor_args)
-        self.disturbace_cost = BaseDisturbanceCost(self.n_action, self.tensor_args)
         self.collision_cost = CollisionAvoidanceCost(self.collision_weights, self.gamma, self.n_horizon, self.tensor_args)
         self.stop_cost = StopCost(self.stop_weights, self.gamma, self.n_horizon, self.dt, self.tensor_args)
         self.ee_cost = EECost(self.ee_weights, self.gamma, self.n_horizon, self.dt, self.tensor_args)
         self.reference_cost = ReferenceCost(self.reference_weights, self.gamma, self.n_horizon, self.dt, self.tensor_args)
-        self.vel_cost = VelCost(self.tensor_args)
+        self.disturbace_cost = BaseDisturbanceCost(self.base_disturbance_weights, self.gamma, self.n_horizon, self.tensor_args)
 
 
         # For Pose Cost
@@ -119,6 +118,47 @@ class CostManager:
         self.jacob_bm = jacobian_bm.clone()
 
 
+    # def compute_all_cost(self):
+    #     import time
+    #     S = torch.zeros((self.n_sample), **self.tensor_args)
+    #     check1_time = time.time()
+
+    #     S += self.pose_cost.compute_stage_cost(self.eef_trajectories, self.target)
+    #     check2_time = time.time()
+    #     self.logger.info(f"check1: {check2_time - check1_time}")
+    #     S += self.pose_cost.compute_terminal_cost(self.eef_trajectories, self.target)
+    #     check1_time = time.time()
+    #     self.logger.info(f"check2: {check1_time - check2_time}")
+    #     # S += self.covar_cost.compute_covar_cost(self.sigma_matrix, self.u, self.v)
+    #     # S += self.joint_cost.compute_centering_cost(self.qSamples)
+    #     # S += self.joint_cost.compute_jointTraj_cost(self.qSamples, self.joint_trajectories)
+    #     S += self.action_cost.compute_action_cost(self.uSamples)
+    #     check2_time = time.time()
+    #     self.logger.info(f"check3: {check2_time - check1_time}")
+    #     S += self.collision_cost.compute_collision_cost(self.base_pose, self.qSamples, self.collision_target)
+    #     check1_time = time.time()
+    #     self.logger.info(f"check4: {check1_time - check2_time}")
+    #     S += self.stop_cost.compute_stop_cost(self.vSamples)
+    #     check2_time = time.time()
+    #     self.logger.info(f"check5: {check2_time - check1_time}")
+    #     S += self.ee_cost.compute_ee_cost(self.vSamples, self.jacobian, self.target_dist)
+    #     check1_time = time.time()
+    #     self.logger.info(f"check6: {check1_time - check2_time}")
+    #     S += self.reference_cost.compute_reference_cost(self.link_list, self.pose_trajectories)
+    #     check2_time = time.time()
+    #     self.logger.info(f"check7: {check2_time - check1_time}")
+    #     # S += self.disturbace_cost.compute_base_disturbance_cost(self.jacob_bm, self.vSamples)
+    #     # check1_time = time.time()
+    #     # self.logger.info(f"check8: {check1_time - check2_time}")
+
+    #     # check1_time = time.time()
+    #     # check2_time = time.time()
+    #     # self.logger.info(f"check: {check2_time - check1_time}")
+    #     # check1_time = time.time()
+    #     # self.logger.info(f"check: {check1_time - check2_time}")
+    #     return S
+    
+
     def compute_all_cost(self):
         S = torch.zeros((self.n_sample), **self.tensor_args)
 
@@ -132,8 +172,6 @@ class CostManager:
         S += self.stop_cost.compute_stop_cost(self.vSamples)
         S += self.ee_cost.compute_ee_cost(self.vSamples, self.jacobian, self.target_dist)
         S += self.reference_cost.compute_reference_cost(self.link_list, self.pose_trajectories)
-        # S += self.vel_cost.compute_base_cost(self.jacob_bm, self.vSamples)
-
-        # self.disturbace_cost.compute_base_disturbance_cost(self.base_pose, self.test_joint, None, None)
+        S += self.disturbace_cost.compute_base_disturbance_cost(self.jacob_bm, self.vSamples)
         return S
     

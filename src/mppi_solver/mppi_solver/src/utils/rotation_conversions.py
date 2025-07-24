@@ -609,7 +609,7 @@ def quaternion_to_axis_angle(quaternions: torch.Tensor) -> torch.Tensor:
     sin_half_angles_over_angles = 0.5 * torch.sinc(half_angles / torch.pi)
     # angles/2 are between [-pi/2, pi/2], thus sin_half_angles_over_angles
     # can't be zero
-    return quaternions[..., 1:] / sin_half_angles_over_angles
+    return quaternions[..., :3] / sin_half_angles_over_angles
 
 
 def rotation_6d_to_matrix(d6: torch.Tensor) -> torch.Tensor:

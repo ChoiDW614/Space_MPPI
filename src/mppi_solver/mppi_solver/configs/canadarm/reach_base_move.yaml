@@ -52,6 +52,9 @@ cost:
   reference:
     weight: 0.75
 
+  base_disturbance:
+    weight: 1.0
+
 sample:
   sigma_scale: 3.0
   kappa: 0.005
