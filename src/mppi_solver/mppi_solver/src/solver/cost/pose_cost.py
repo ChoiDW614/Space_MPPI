@@ -27,7 +27,6 @@ class PoseCost():
         
 
     def compute_stage_cost(self, eefTraj: torch.Tensor, target_pose: Pose) -> torch.Tensor:
-        # self.logger.info(f"eetraj{eefTraj.shape}")
         ee_sample_pose = eefTraj[:,:-1,0:3,3]
         ee_sample_orientation = eefTraj[:,:-1,0:3,0:3]
 
