@@ -57,6 +57,7 @@ class URDFForwardKinematics():
                                     [-1,0,0,-0.5],
                                     [0,0,0,1]])
         self.com_local_list = [com_local_1, com_local_2, com_local_3, com_local_4, com_local_5, com_local_6, com_local_7]
+        self.com_local_list = torch.stack(self.com_local_list, dim=-1).unsqueeze(0).unsqueeze(0).expand(-1, self.robot._n_timestep, -1, -1, -1) 
 
 
     def set_mount_transformation_deivce(self, device):
@@ -82,8 +83,9 @@ class URDFForwardKinematics():
         free_floating: bool = False,
         base_move : bool = False
     ) -> torch.Tensor:
-        tf_list = []
-        com_list = []
+        # import time
+        # torch.cuda.synchronize()
+        # check1_time = time.time()
 
         if init_transformation is None:
             init_transformation = torch.eye(4, device=q.device)
@@ -108,16 +110,20 @@ class URDFForwardKinematics():
             tf_child, tf_list = self.robot.forward_kinematics(q, free_floating, base_move)
             tf_child = init_transformation @ self._mount_transformation @ tf_child
 
+        # torch.cuda.synchronize()
+        # check2_time = time.time()
+        # self.logger.info(f"check1: {check2_time - check1_time}")
+
         # self.logger.info(f"Parent TF {tf_parent}")
         # tf_paret = torch.eye
+        
+        tf_batch = torch.stack(tf_list, dim=-1)
+        tf_list = torch.einsum('ij,ntjkl->ntikl', init_transformation @ self._mount_transformation, tf_batch)
 
-        for i in range(len(tf_list)):
-            tf_list[i] = init_transformation @ self._mount_transformation @ tf_list[i] 
-            if i!= len(tf_list)-1:
-                com_list.append(torch.matmul(tf_list[i], (self.com_local_list[i].to(dtype=tf_list[i].dtype, device=tf_list[i].device)))[:,:,:3,3])
-            # self.logger.info(f"TF : {tf_list[i]}")
+        self.com_local_list = self.com_local_list.to(device=q.device)
+        com_list = torch.einsum('ntijc,ntjlc->ntilc', tf_list[..., :7], self.com_local_list)[:,:,:3,3]
 
-        tf_parent_inv = torch.linalg.inv(tf_parent)  
+        tf_parent_inv = self.inverse_tfmatrix_batch(tf_parent)
         tf_parent_child = tf_parent_inv @ tf_child
 
         return tf_parent_child, tf_list, com_list
@@ -131,7 +137,7 @@ class URDFForwardKinematics():
         free_floating: bool = False,
         base_move : bool = False
     ) -> torch.Tensor:
-        tf_list =[]
+
         if init_transformation is None:
             init_transformation = torch.eye(4)
         
@@ -154,12 +160,26 @@ class URDFForwardKinematics():
         else:
             tf_child, tf_list = self.robot.forward_kinematics_cpu(q, free_floating, base_move)
             tf_child = init_transformation @ self._mount_transformation_cpu @ tf_child
-        
-        for i in range(len(tf_list)):
-            tf_list[i] = init_transformation @ self._mount_transformation_cpu @ tf_list[i] 
+
+        tf_batch = torch.stack(tf_list, dim=-1)
+        tf_list = torch.einsum('ij,jkl->ikl', init_transformation @ self._mount_transformation_cpu, tf_batch)
         
         tf_parent_inv = torch.linalg.inv(tf_parent)
         tf_parent_child = tf_parent_inv @ tf_child
 
         return tf_parent_child, tf_list
+    
+
+    def inverse_tfmatrix_batch(self, tf_batch: torch.Tensor) -> torch.Tensor:
+        R = tf_batch[..., :3,:3]
+        t = tf_batch[..., :3, 3]
+
+        R_T = R.transpose(-1, -2)
+
+        t_new = -torch.matmul(R_T, t.unsqueeze(-1)).squeeze(-1)
+
+        inv_tf = tf_batch.clone()
+        inv_tf[..., :3, :3] = R_T
+        inv_tf[..., :3, 3]  = t_new
+        return inv_tf
     

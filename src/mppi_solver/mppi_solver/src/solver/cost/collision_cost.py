@@ -5,6 +5,20 @@ from mppi_solver.src.utils.pose import Pose
 from ament_index_python.packages import get_package_share_directory
 
 from mppi_solver.src.solver.cost.pts.network import *
+import torch.quantization as tq
+
+
+class QuantMLP(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.quant   = tq.QuantStub()
+        self.layers  = MLPRegressionNormDropoutELU()
+        self.dequant = tq.DeQuantStub()
+
+    def forward(self, x):
+        x = self.quant(x)
+        x = self.layers(x)
+        return self.dequant(x)
 
 
 class CollisionAvoidanceCost():
@@ -20,11 +34,11 @@ class CollisionAvoidanceCost():
         self.collision_softcap = params['softcap']
 
         # Neural network for calculate distances
-        # self.model = MLPRegressionNormDropout().to(**self.tensor_args)
-        # pt_path = os.path.join(get_package_share_directory("mppi_solver"), "pts", "best_canadarm_MLPRegressionDropout.pt")
+        self.model = MLPRegressionNormDropoutELU().to(**self.tensor_args)
+        pt_path = os.path.join(get_package_share_directory("mppi_solver"), "pts", "best_canadarm_MLPRegressionDropout.pt")
 
-        self.model = MLPWithResidualNormELU().to(**self.tensor_args)
-        pt_path = os.path.join(get_package_share_directory("mppi_solver"), "pts", "best_canadarm_MLPWithResidualNorm.pt")
+        # # self.model = MLPWithResidualNormELU().to(**self.tensor_args)
+        # # pt_path = os.path.join(get_package_share_directory("mppi_solver"), "pts", "best_canadarm_MLPWithResidualNorm.pt")
 
         checkpoint = torch.load(pt_path, map_location=self.device, weights_only=True)
         self.model.load_state_dict(checkpoint['model_state_dict'])
@@ -43,7 +57,7 @@ class CollisionAvoidanceCost():
         base_joint_pose = base_pose.tf_matrix(self.tensor_args) @ self.mount_tf
 
         # calculate distance
-        with torch.no_grad():
+        with torch.inference_mode():
             with torch.amp.autocast('cuda'):
                 n_sample, _ ,_ = qSamples.shape
                 n_targets, _ = targets.shape
@@ -78,7 +92,7 @@ class CollisionAvoidanceCost():
         base_joint_pose = base_pose.tf_matrix(self.tensor_args) @ self.mount_tf
 
         # calculate distance
-        with torch.no_grad():
+        with torch.inference_mode():
             with torch.amp.autocast('cuda'):
                 n_targets, _ = targets.shape
                 

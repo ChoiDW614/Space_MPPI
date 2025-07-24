@@ -177,10 +177,9 @@ class MPPI():
         if self.check_reach():
             return self.qdes, self.vdes
         
-        # 0.01 sec
         self.MATLAB_log()
-        
-        # 0.005 ~ 0.01 sec
+
+
         u = self.u_prev.clone()
         noise = self.sample_gen.sampling(self._q)
         v = u + noise
@@ -189,32 +188,29 @@ class MPPI():
         qSamples = qSamples.to(**self.tensor_args)
         vSamples = vSamples.to(**self.tensor_args)
 
-        # 0.03 sec
+        # torch.cuda.synchronize()
+        # check1_time = time.time()
+        # 0.035 sec
         trajectory, link_list, com_list = self.fk_canadarm.forward_kinematics(qSamples, 'EE_SSRMS_tip', 'Base_SSRMS', \
                     self.base_pose.tf_matrix(self.tensor_args), free_floating=self.is_free_floating, base_move=self.is_base_move)
         
-        # 0.01 sec -> 0.0005 sec
+        # torch.cuda.synchronize()
+        # check2_time = time.time()
+        # self.logger.info(f"check1: {check2_time - check1_time}")
+        
         jacob = self.calc_jacob.compute_jacobian(link_list)
-        # 0.075 sec -> 0.002 sec
-        jacob_bm = self.calc_jacob.compute_jacob_bm(com_list, link_list) 
+        jacob_bm = self.calc_jacob.compute_jacob_bm(com_list, link_list)
 
-        # 0.001s
         self.cost_manager.update_pose_cost(qSamples, v, vSamples, trajectory, self.reference_joint, self.reference_se3, self.target_pose)
         self.cost_manager.update_covar_cost(u, v, self.sample_gen.sigma_matrix)
         self.cost_manager.update_base_cost(self.base_pose, self._q)
         self.cost_manager.update_collision_cost(self.collision_target)
         self.cost_manager.update_ee_cost(jacob, self.target_dist)
-        self.cost_manager.update_reference_cost(link_list[-2])
+        self.cost_manager.update_reference_cost(link_list[...,-2])
         self.cost_manager.update_base_disturbance_cost(jacob_bm)
 
-        check1_time = time.time()
-        # 0.096 sec
         S = self.cost_manager.compute_all_cost()
 
-        check2_time = time.time()
-        self.logger.info(f"check: {check2_time - check1_time}")
-
-        # 0.001 ~ 0.003 sec
         w = self.compute_weights(S, self._lambda)
         w_expanded = w.view(-1, 1, 1)
         w_eps = torch.sum(w_expanded * noise, dim = 0)
@@ -222,17 +218,14 @@ class MPPI():
 
         u += w_eps
 
-        # 0.0005 ~ 0.001 sec
         self.sample_gen.update_distribution(u, v, w, noise)
 
-        # 0.0001 sec
         self.u_prev = u.clone()
         self.u = u[0].clone()
         self.noise_prev = noise.clone()
 
         self.vdes = self._qdot + self.u * self.dt
         self.qdes = self._q + self._qddot * self.dt + 0.5 * self.u * self.dt * self.dt
-
         return self.qdes, self.vdes
 
 
@@ -252,7 +245,7 @@ class MPPI():
         ee_jacobian_prev = self.calc_jacob.compute_jacobian(link_list_prev)
         ee_jacobian_prev = ee_jacobian_prev.squeeze(0)
 
-        jacob_bm = self.calc_jacob.compute_jacob_bm(com_list_prev, link_list_prev) 
+        jacob_bm = self.calc_jacob.compute_jacob_bm(com_list_prev, link_list_prev)
 
         prev_stage_cost     = self.cost_manager.pose_cost.compute_prev_stage_cost(ee_traj_prev, self.target_pose)
         prev_terminal_cost  = self.cost_manager.pose_cost.compute_prev_terminal_cost(ee_traj_prev, self.target_pose)
@@ -263,7 +256,7 @@ class MPPI():
         prev_collision_cost = self.cost_manager.collision_cost.compute_prev_collision_cost(self.base_pose, q_prev, self.collision_target)
         prev_stop_cost      = self.cost_manager.stop_cost.compute_prev_stop_cost(self.v_prev)
         prev_ee_cost        = self.cost_manager.ee_cost.compute_prev_ee_cost(self.v_prev, ee_jacobian_prev, self.target_dist)
-        prev_reference_cost = self.cost_manager.reference_cost.compute_prev_reference_cost(link_list_prev[-2], self.reference_se3)
+        prev_reference_cost = self.cost_manager.reference_cost.compute_prev_reference_cost(link_list_prev[...,-2], self.reference_se3)
         prev_disturbance_cost = self.cost_manager.disturbace_cost.compute_prev_base_disturbance_cost(jacob_bm, self.v_prev)
         
         mean_prev_stage_cost     = torch.mean(prev_stage_cost)
