@@ -140,6 +140,7 @@ class MPPI():
         self.matlab_logger.create_dataset(dataset_name="ori_err", shape=4)
         self.matlab_logger.create_dataset(dataset_name="cost", shape=9)
         self.matlab_logger.create_dataset(dataset_name="sigma", shape=(self.n_action+1))
+        self.matlab_logger.create_dataset(dataset_name="base", shape=7)
 
         # test
         # from torch.utils.tensorboard import SummaryWriter
@@ -286,6 +287,8 @@ class MPPI():
                                                                mean_prev_reference_cost.item(),
                                                                mean_prev_disturbance_cost.item()])
         self.matlab_logger.log("sigma", [self.sim_time.time] + torch.diag(self.sample_gen.sigma).tolist())
+        self.matlab_logger.log("base", [self.sim_time.time] + \
+                               self.cost_manager.disturbace_cost.compute_base_disturbance(jacob_bm, self.v_prev).tolist())
         return
     
 

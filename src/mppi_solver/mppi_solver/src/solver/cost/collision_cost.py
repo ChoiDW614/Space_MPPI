@@ -74,7 +74,16 @@ class CollisionAvoidanceCost():
                     p_trans.repeat(n_sample, 1).view(-1, 1, targets.size(-1)).expand(-1, self.n_horizon, targets.size(-1))
                 ], dim=-1)
 
+                import time
+                torch.cuda.synchronize()
+                time1 = time.time()
+
                 output = 0.01 * self.model(input) # train NN by multiplying the training data by 100
+
+                torch.cuda.synchronize()
+                time2 = time.time()
+                self.logger.info(f"solver total time: {time2 - time1}")
+                self.logger.info(f"shape{input.shape}")
                 dist = output.unflatten(0, (n_sample, n_targets)).permute(0, 2, 1, 3).to(**self.tensor_args) # (n_sample, n_horizon, n_target, n_dof+1))
 
         cost_collision = torch.sum(torch.max(self.zero, -torch.log(dist) + self.softcap), dim=(2,3))

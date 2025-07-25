@@ -1,3 +1,4 @@
+import math
 import torch
 from rclpy.logging import get_logger
 
@@ -34,14 +35,19 @@ class MixedSampling:
         self.knot_divider = params['sample']['bspline']['knot']
         self.n_knot = self.n_horizon // self.knot_divider
 
-        self.selection = ['std', 'sobol', 'std_constvel', 'sobol_constvel']
-        self.base_n = self.n_sample // len(self.selection)
-        self.splits = [self.base_n] * (len(self.selection) - 1) + [self.n_sample - self.base_n * (len(self.selection) - 1)]
+        self.selection = params['sample']['selection']
+        self.sel_weights = params['sample']['selection_weights']
+        raw_counts = [w * self.n_sample for w in self.sel_weights]
+        floor_counts = [math.floor(rc) for rc in raw_counts]
 
+        remainder = self.n_sample - sum(floor_counts)
+        fracs     = [rc - fc for rc, fc in zip(raw_counts, floor_counts)]
+        idxs      = sorted(range(len(fracs)), key=lambda i: fracs[i], reverse=True)
+        splits = floor_counts.copy()
+        for i in idxs[:remainder]:
+            splits[i] += 1
+        self.splits = splits
         self.std_ref = self.standard_normal.n_sample_sampling(self.splits[0])
-
-        self.scale_history  = {sel: [] for sel in self.selection}
-        self.offset_history = {sel: [] for sel in self.selection}
 
         # Update Parameter
         self.sigma_update = params['sample']['sigma_update']
@@ -93,15 +99,35 @@ class MixedSampling:
                 scale, offset = self.compute_iqr_scale_and_offset(sobol_bspline_noise, ref_dist=self.std_ref)
                 noise_list.append(sobol_bspline_noise * scale + offset)
 
-            # std and Sobol constanct velocity
-            elif sel in ('std_constvel', 'sobol_constvel') and q is not None:
-                diff = torch.linspace(0.0303, 1.0, steps=32, **self.tensor_args).view(1, 32, 1)
-                if sel == 'std_constvel':
+            # standard normal scaling
+            elif sel == 'std_scaling':
+                base = n_split // 3
+                rem  = n_split - base * 3
+                splits = [base + (1 if i < rem else 0) for i in range(3)]
+                for r, ns in zip((0.75, 0.5, 0.25), splits):
+                    std_noise = self.standard_normal.n_sample_ratio_sampling(ns, r)
+                    std_noise = self.scaling_noise(std_noise, ns)
+                    scale, offset = self.compute_iqr_scale_and_offset(std_noise, ref_dist=self.std_ref)
+                    noise_list.append(std_noise + offset)
+
+            elif sel == 'std_constacc_scaling' and q is not None:
+                base = n_split // 3
+                rem  = n_split - base * 3
+                splits = [base + (1 if i < rem else 0) for i in range(3)]
+                for r, ns in zip((0.75, 0.5, 0.25), splits):
+                    cv = self.standard_normal.n_sample_horizon_sampling(ns, 1).expand(-1, self.n_horizon, -1) * r
+                    cv_noise = self.scaling_noise(cv, ns)
+                    scale, offset = self.compute_iqr_scale_and_offset(cv_noise, ref_dist=self.std_ref)
+                    noise_list.append(cv_noise + offset)
+
+            # std and Sobol constanct accel
+            elif sel in ('std_constacc', 'sobol_constacc') and q is not None:
+                if sel == 'std_constacc':
                     cv = self.standard_normal.n_sample_horizon_sampling(n_split, 1)
                 else:
                     cv = self.sobol_seq.n_sample_horizon_sampling(n_split, 1)
-                delta = self.scaling_noise(cv, n_split)
-                cv_noise = delta * diff
+                cv_full = cv.expand(-1, self.n_horizon, -1)
+                cv_noise = self.scaling_noise(cv_full, n_split)
                 
                 scale, offset = self.compute_iqr_scale_and_offset(cv_noise, ref_dist=self.std_ref)
                 noise_list.append(cv_noise * scale + offset)

@@ -47,3 +47,9 @@ class BaseDisturbanceCost():
         cost_disturbance = cost_disturbance * self.gamma_horizon_gpu
         cost_disturbance = torch.sum(cost_disturbance, dim=0)
         return cost_disturbance
+    
+    def compute_base_disturbance(self, jacob_bm: torch.Tensor, v_sample: torch.Tensor):
+        v_base = torch.einsum('tij,tj->ti', jacob_bm.squeeze(0), v_sample)
+        v_base = v_base[0,:]
+        return v_base
+    

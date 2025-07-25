@@ -83,3 +83,7 @@ class StandardSampling:
         standard_normal_noise = torch.randn(n_sample, n_knot, self.n_action, **self.tensor_args)
         return standard_normal_noise
     
+    def n_sample_ratio_sampling(self, n_sample, ratio: float = 1.0):
+        noise = torch.randn(n_sample, self.n_horizon, self.n_action, **self.tensor_args) * ratio
+        return noise
+    
