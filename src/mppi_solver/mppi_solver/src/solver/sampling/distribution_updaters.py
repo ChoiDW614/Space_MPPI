@@ -106,9 +106,11 @@ class CMAESUpdater(DistributionUpdater):
 
         # CMA-ES Computation optimization variables
         self._one_minus_c1 = 1 - self.c1
+        self._one_minus_cc = 1 - self.cc
         self._pc_const = self.cc * (2 - self.cc)
         self._cs_action = self.n_action + 5
         self._cmu_action = (self.n_action + 2) ** 2
+        self._h_sigma_max = 1.4 + 2 / (self.n_action + 1)
         self.iteration = 0
 
 
@@ -124,18 +126,16 @@ class CMAESUpdater(DistributionUpdater):
         v = v[:,0,:]
 
         inv_sqrt_diag = 1.0 / torch.sqrt(torch.diag(sigma))
-
         y = (self.mean - m_old) * inv_sqrt_diag
 
         coeff_sigma = torch.sqrt(self.cs * (2.0 - self.cs) * self.mu_eff)
         self.ps = (1 - self.cs) * self.ps + coeff_sigma * y
 
-        h_sigma = (self.ps.norm() / torch.sqrt(1 - (1 - self.cs) ** (2 * (self.iteration + 1)))) < (1.4 + 2 / (self.n_action + 1))
-        self.pc = (1 - self.cc) * self.pc + h_sigma * torch.sqrt(self._pc_const * self.mu_eff) * y
+        h_sigma = (self.ps.norm() / torch.sqrt(1 - (1 - self.cs) ** (2 * (self.iteration + 1)))) < self._h_sigma_max
+        self.pc = self._one_minus_cc * self.pc + h_sigma * torch.sqrt(self._pc_const * self.mu_eff) * y
 
         # Update the covariance matrix
         delta_rank1 = torch.outer(self.pc, self.pc) 
-
         y_k = (v - m_old) * inv_sqrt_diag
         delta_rankmu = torch.einsum('i,ij,ik->jk', w, y_k, y_k)
 

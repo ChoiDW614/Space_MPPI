@@ -23,6 +23,8 @@ class URDFForwardKinematics():
         self.robot.from_file(urdf)
 
         self.robot._joint_chain_list = self.robot._get_joint_chain(self._end_links)
+        self.robot._init_xyzrpy_tf_matrix()
+        self.robot._init_axis()
         self._n_dof = self.robot.degrees_of_freedom()
         self._mount_transformation = torch.eye(4)
         self._mount_transformation_cpu = torch.eye(4)
@@ -83,9 +85,8 @@ class URDFForwardKinematics():
         free_floating: bool = False,
         base_move : bool = False
     ) -> torch.Tensor:
-        # import time
-        # torch.cuda.synchronize()
-        # check1_time = time.time()
+        import time
+
 
         if init_transformation is None:
             init_transformation = torch.eye(4, device=q.device)
@@ -102,17 +103,13 @@ class URDFForwardKinematics():
             tf_parent = torch.eye(4, device=q.device).expand(self.robot._n_samples, self.robot._n_timestep, 4, 4).clone()
         else:
             tf_parent, tf_list = self.robot.forward_kinematics(q, free_floating, base_move)
-            tf_parent = init_transformation @ self._mount_transformation @ tf_parent
+            tf_parent = torch.einsum('mn,np,btpj->btmj', init_transformation, self._mount_transformation, tf_parent)
 
         if child_link == self._root_link:
             tf_child = torch.eye(4, device=q.device).expand(self.robot._n_samples, self.robot._n_timestep, 4, 4).clone()
         else:
             tf_child, tf_list = self.robot.forward_kinematics(q, free_floating, base_move)
-            tf_child = init_transformation @ self._mount_transformation @ tf_child
-
-        # torch.cuda.synchronize()
-        # check2_time = time.time()
-        # self.logger.info(f"check1: {check2_time - check1_time}")
+            tf_child = torch.einsum('mn,np,btpj->btmj', init_transformation, self._mount_transformation, tf_child)
 
         # self.logger.info(f"Parent TF {tf_parent}")
         # tf_paret = torch.eye

@@ -1,6 +1,11 @@
 import torch
 from torch import sin, cos, tensor, eye
 
+import time
+from rclpy.logging import get_logger
+logger = get_logger("tf_matrix")
+
+
 def rotation_matrix_rpy(roll, pitch, yaw):
     cr = cos(roll)
     sr = sin(roll)
@@ -35,41 +40,24 @@ def make_transform_matrix(xyz, rpy):
     return T
 
 
-def prismatic_transform(xyz, rpy, axis, q):
-    tf_origin = make_transform_matrix(xyz, rpy).to(device=q.device)
-
+def prismatic_transform(tf_origin: torch.Tensor, axis: torch.Tensor, q: torch.Tensor) -> torch.Tensor:
     n_sample, n_horizen = q.size()
-
-    if torch.linalg.norm(axis) < 1e-12:
-        axis = tensor([1.0, 0.0, 0.0], device=q.device)
-    else:
-        axis = axis / torch.linalg.norm(axis)
 
     tf_slide = torch.eye(4, device=q.device).expand(n_sample, n_horizen, 4, 4).clone()
     tf_slide[..., :3, 3] = axis.view(1, 1, 3) * q.unsqueeze(-1)
 
-    if tf_origin.ndim == 2:
-        tf_origin = tf_origin.unsqueeze(0).unsqueeze(0)  # (1, 1, 4, 4)
-        tf_origin = tf_origin.expand(n_sample, n_horizen, 4, 4)
-
-    return tf_origin @ tf_slide
+    return torch.einsum('ij,btjk->btik', tf_origin, tf_slide)
 
 
-def revolute_transform(xyz, rpy, axis, q):
-    tf_origin = make_transform_matrix(xyz, rpy).to(device=q.device)
-
+def revolute_transform(tf_origin: torch.Tensor, axis: torch.Tensor, q: torch.Tensor) -> torch.Tensor:
     n_sample, n_horizen = q.size()
-
-    if torch.linalg.norm(axis) < 1e-12:
-        axis = tensor([1.0, 0.0, 0.0], device=q.device)
-    else:
-        axis = axis / torch.linalg.norm(axis)
 
     c = cos(q)
     s = sin(q)
     omc = 1 - c
-
-    vx, vy, vz = axis
+    vx = axis[0]
+    vy = axis[1]
+    vz = axis[2]
 
     R00 = c + vx * vx * omc
     R01 = vx * vy * omc - vz * s
@@ -92,31 +80,17 @@ def revolute_transform(xyz, rpy, axis, q):
     tf_rot = eye(4, device=q.device).expand(n_sample, n_horizen, 4, 4).clone()
     tf_rot[..., :3, :3] = R
 
-    return tf_origin @ tf_rot
+    return torch.einsum('ij,btjk->btik', tf_origin, tf_rot)
 
 
-def prismatic_transform_cpu(xyz, rpy, axis, q):
-    tf_origin = make_transform_matrix(xyz, rpy)
-
-    if torch.linalg.norm(axis) < 1e-12:
-        axis = tensor([1.0, 0.0, 0.0])
-    else:
-        axis = axis / torch.linalg.norm(axis)
-
+def prismatic_transform_cpu(tf_origin, axis, q):
     tf_slide = eye(4)
     tf_slide[:3, 3] = axis * q
 
     return tf_origin @ tf_slide
 
 
-def revolute_transform_cpu(xyz, rpy, axis, q):
-    tf_origin = make_transform_matrix(xyz, rpy)
-
-    if torch.linalg.norm(axis) < 1e-12:
-        axis = tensor([1.0, 0.0, 0.0])
-    else:
-        axis = axis / torch.linalg.norm(axis)
-
+def revolute_transform_cpu(tf_origin, axis, q):
     c = cos(q)
     s = sin(q)
     omc = 1 - c

@@ -35,6 +35,11 @@ class URDFparser(object):
         self._n_timestep = 1
         self._n_mobile_dof = 0
 
+        self.logger = get_logger("urdf_parser")
+        self.fk_init = False
+        self.init_transform_matrix = dict()
+        self.init_axis = dict()
+
     def degrees_of_freedom(self):
         return self._degrees_of_freedom
 
@@ -119,29 +124,45 @@ class URDFparser(object):
                     joint_list.append(jnt)
         return joint_list
     
+    def _init_xyzrpy_tf_matrix(self):
+        if self.robot_desc is None:
+            raise ValueError("Robot description not loaded.")
+        for jt in self._joint_chain_list:
+            xyz = torch.tensor(jt.origin.xyz)
+            rpy = torch.tensor(jt.origin.rpy)
+            self.init_transform_matrix[jt.name] = make_transform_matrix(xyz, rpy)
+        return
+    
+    def _init_axis(self):
+        if self.robot_desc is None:
+            raise ValueError("Robot description not loaded.")
+        for jt in self._joint_chain_list:
+            if jt.axis is None:
+                axis = torch.tensor([1.0, 0.0, 0.0])
+            else:
+                axis = torch.tensor(jt.axis)
+                if torch.linalg.norm(axis) < 1e-12:
+                    axis = tensor([1.0, 0.0, 0.0])
+                else:
+                    axis = axis / torch.linalg.norm(axis)
+            self.init_axis[jt.name] = axis
+        return
+
+    
     def forward_kinematics(self, q: torch.Tensor, free_floating: bool = False, base_move : bool = False):
         if self.robot_desc is None:
-            raise ValueError("Robot description not loaded.") 
+            raise ValueError("Robot description not loaded.")
 
         tf_fk = self._tf_fk.expand(self._n_samples, self._n_timestep, 4, 4).to(device=q.device).clone()
-
         tf_list = []
 
         if free_floating and base_move:
-                tf_base = transformation_matrix_from_xyzrpy(q=q[:,:,:self._n_mobile_dof])
-                tf_fk = tf_fk @ tf_base
-                q = q[:,:,self._n_mobile_dof:]
+            tf_base = transformation_matrix_from_xyzrpy(q=q[:,:,:self._n_mobile_dof])
+            tf_fk = tf_fk @ tf_base
+            q = q[:,:,self._n_mobile_dof:]
 
         for jt in self._joint_chain_list:
             jtype = jt.type
-
-            xyz = torch.tensor(jt.origin.xyz)
-            rpy = torch.tensor(jt.origin.rpy)
-
-            if jt.axis is None:
-                axis = torch.tensor([1.0, 0.0, 0.0], device=q.device)
-            else:
-                axis = torch.tensor(jt.axis, device=q.device)
 
             if jt.name in self._joint_map:
                 q_idx = self._joint_map[jt.name]
@@ -150,18 +171,17 @@ class URDFparser(object):
                 q_val = torch.zeros([self._n_samples, self._n_timestep])
 
             if jtype == "fixed":
-                tf_local = make_transform_matrix(xyz, rpy).to(device=q.device)
-                tf_fk = tf_fk @ tf_local
+                tf_fk = torch.einsum('shij,jk->shik', tf_fk, self.init_transform_matrix[jt.name].to(q.device))
             elif jtype == "prismatic":
-                tf_local = prismatic_transform(xyz, rpy, axis, q_val)
-                tf_fk = tf_fk @ tf_local
+                tf_local = prismatic_transform(self.init_transform_matrix[jt.name].to(q.device), self.init_axis[jt.name], q_val)
+                tf_fk = torch.einsum('shij,shjk->shik', tf_fk, tf_local)
             elif jtype in ["revolute", "continuous"]:
-                tf_local = revolute_transform(xyz, rpy, axis, q_val)
-                tf_fk = tf_fk @ tf_local
+                tf_local = revolute_transform(self.init_transform_matrix[jt.name].to(q.device), self.init_axis[jt.name], q_val)
+                tf_fk = torch.einsum('shij,shjk->shik', tf_fk, tf_local)
             else:
-                tf_local = make_transform_matrix(xyz, rpy).to(device=q.device)
-                tf_fk = tf_fk @ tf_local
+                tf_fk = torch.einsum('shij,jk->shik', tf_fk, self.init_transform_matrix[jt.name].to(q.device))
             tf_list.append(tf_fk)
+
         return tf_fk, tf_list
 
 
@@ -195,16 +215,14 @@ class URDFparser(object):
                 q_val = torch.zeros(1)
 
             if jtype == "fixed":
-                tf_local = make_transform_matrix(xyz, rpy)
-                tf_fk = tf_fk @ tf_local
+                tf_fk = tf_fk @ self.init_transform_matrix[jt.name]
             elif jtype == "prismatic":
-                tf_local = prismatic_transform_cpu(xyz, rpy, axis, q_val)
+                tf_local = prismatic_transform_cpu(self.init_transform_matrix[jt.name], axis, q_val)
                 tf_fk = tf_fk @ tf_local
             elif jtype in ["revolute", "continuous"]:
-                tf_local = revolute_transform_cpu(xyz, rpy, axis, q_val)
+                tf_local = revolute_transform_cpu(self.init_transform_matrix[jt.name], axis, q_val)
                 tf_fk = tf_fk @ tf_local
             else:
-                tf_local = make_transform_matrix(xyz, rpy)
-                tf_fk = tf_fk @ tf_local
+                tf_fk = tf_fk @ self.init_transform_matrix[jt.name]
             tf_list.append(tf_fk)
         return tf_fk, tf_list

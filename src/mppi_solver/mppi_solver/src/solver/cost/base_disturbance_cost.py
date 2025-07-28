@@ -26,7 +26,6 @@ class BaseDisturbanceCost():
 
         return cost
 
-
     def compute_base_disturbance_cost(self, jacob_bm: torch.Tensor, v_sample: torch.Tensor):
         v_base = torch.einsum('ntij,ntj->nti', jacob_bm, v_sample)
         v_base = torch.norm(v_base, p=2, dim=-1)

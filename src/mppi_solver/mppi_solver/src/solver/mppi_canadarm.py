@@ -175,15 +175,29 @@ class MPPI():
     
 
     def compute_control_input(self):
+        # torch.cuda.synchronize()
+        # check1_time = time.time()
+
         if self.check_reach():
             return self.qdes, self.vdes
         
+        # torch.cuda.synchronize()
+        # check2_time = time.time()
+        # self.logger.info(f"check1: {check2_time - check1_time}")
+        
         self.MATLAB_log()
 
+        # torch.cuda.synchronize()
+        # check1_time = time.time()
+        # self.logger.info(f"check2: {check1_time - check2_time}")
 
         u = self.u_prev.clone()
         noise = self.sample_gen.sampling(self._q)
         v = u + noise
+
+        # torch.cuda.synchronize()
+        # check2_time = time.time()
+        # self.logger.info(f"check3: {check2_time - check1_time}")
 
         qSamples, vSamples = self.sample_gen.get_sample_joint(v, self._q, self._qdot, self.dt)
         qSamples = qSamples.to(**self.tensor_args)
@@ -191,16 +205,28 @@ class MPPI():
 
         # torch.cuda.synchronize()
         # check1_time = time.time()
-        # 0.035 sec
+        # self.logger.info(f"check4: {check1_time - check2_time}")
+
+        # torch.cuda.synchronize()
+        # check1_time = time.time()
+        # 0.03 sec
         trajectory, link_list, com_list = self.fk_canadarm.forward_kinematics(qSamples, 'EE_SSRMS_tip', 'Base_SSRMS', \
                     self.base_pose.tf_matrix(self.tensor_args), free_floating=self.is_free_floating, base_move=self.is_base_move)
         
+        # torch.cuda.synchronize()
+        # check2_time = time.time()
+        # self.logger.info(f"check5: {check2_time - check1_time}")
+
         # torch.cuda.synchronize()
         # check2_time = time.time()
         # self.logger.info(f"check1: {check2_time - check1_time}")
         
         jacob = self.calc_jacob.compute_jacobian(link_list)
         jacob_bm = self.calc_jacob.compute_jacob_bm(com_list, link_list)
+
+        # torch.cuda.synchronize()
+        # check1_time = time.time()
+        # self.logger.info(f"check6: {check1_time - check2_time}")
 
         self.cost_manager.update_pose_cost(qSamples, v, vSamples, trajectory, self.reference_joint, self.reference_se3, self.target_pose)
         self.cost_manager.update_covar_cost(u, v, self.sample_gen.sigma_matrix)
@@ -210,23 +236,52 @@ class MPPI():
         self.cost_manager.update_reference_cost(link_list[...,-2])
         self.cost_manager.update_base_disturbance_cost(jacob_bm)
 
+        # torch.cuda.synchronize()
+        # check2_time = time.time()
+        # self.logger.info(f"check7: {check2_time - check1_time}")
+
         S = self.cost_manager.compute_all_cost()
+
+        # torch.cuda.synchronize()
+        # check1_time = time.time()
+        # self.logger.info(f"check8: {check1_time - check2_time}")
 
         w = self.compute_weights(S, self._lambda)
         w_expanded = w.view(-1, 1, 1)
         w_eps = torch.sum(w_expanded * noise, dim = 0)
         w_eps = self.svg_filter.savgol_filter_torch(w_eps, window_size=9, polyorder=2, tensor_args=self.tensor_args)
 
+        # torch.cuda.synchronize()
+        # check2_time = time.time()
+        # self.logger.info(f"check9: {check2_time - check1_time}")
+
         u += w_eps
 
+        # torch.cuda.synchronize()
+        # check1_time = time.time()
+        # self.logger.info(f"check10: {check1_time - check2_time}")
+
         self.sample_gen.update_distribution(u, v, w, noise)
+
+        # torch.cuda.synchronize()
+        # check2_time = time.time()
+        # self.logger.info(f"check11: {check2_time - check1_time}")
 
         self.u_prev = u.clone()
         self.u = u[0].clone()
         self.noise_prev = noise.clone()
 
+        # torch.cuda.synchronize()
+        # check1_time = time.time()
+        # self.logger.info(f"check12: {check1_time - check2_time}")
+
         self.vdes = self._qdot + self.u * self.dt
         self.qdes = self._q + self._qddot * self.dt + 0.5 * self.u * self.dt * self.dt
+
+        # torch.cuda.synchronize()
+        # check2_time = time.time()
+        # self.logger.info(f"check13: {check2_time - check1_time}")
+
         return self.qdes, self.vdes
 
 
