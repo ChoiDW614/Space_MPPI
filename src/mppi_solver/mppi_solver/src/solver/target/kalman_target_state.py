@@ -15,7 +15,6 @@ from mppi_solver.src.utils.pose import Pose
 from mppi_solver.src.utils.time import Time
 
 from ament_index_python.packages import get_package_share_directory
-from mppi_solver.src.robot.urdfFks.urdfFk import URDFForwardKinematics
 
 from pathlib import Path
 from mppi_solver.src.utils.matlab_logger import MATLABLogger
@@ -24,11 +23,6 @@ from mppi_solver.src.utils.matlab_logger import MATLABLogger
 class DockingInterface(object):
     def __init__(self, controller_ref=None, predict_step: int=32):
         self.logger = get_logger("docking_interface")
-
-        urdf_file_path = os.path.join(get_package_share_directory('mppi_solver'), "models", "ets_vii", "ets_vii.urdf")
-        self.fk_ets_vii = URDFForwardKinematics(urdf_file_path, root_link='base_link', end_links = 'docking_interface')
-        self.fk_ets_vii.set_mount_transformation(torch.eye(4))
-        self.fk_ets_vii.set_samples_and_timesteps(1, 1, 0)
 
         self.sim_time = Time()
         self.sim_time_prev = Time()

@@ -53,7 +53,7 @@ class Pose():
 
     @property
     def np_rpy(self):
-        return matrix_to_euler_angles(self.__tf, "ZYX").numpy()
+        return matrix_to_euler_angles(self.__tf, "ZYX").cpu().numpy()
 
     @property
     def x(self):

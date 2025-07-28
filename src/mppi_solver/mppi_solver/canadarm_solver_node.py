@@ -133,7 +133,6 @@ class MppiSolverNode(Node):
 
     def cal_timer_callback(self):
         if self.is_target and self.init_jointCB and (self.sim_time.time > 10.0):
-        # if self.is_target and self.init_jointCB:
             if self.is_init_trajectory:
                 targetSE3 = self.targetSE3 * self.canadarmWrapper.eef_to_tip.inverse()
                 stime = time.time()
@@ -148,17 +147,19 @@ class MppiSolverNode(Node):
             jointTraj, poseTraj = self.canadarmIK.get_ik_joint_trajectory2(ctime, oMi, self.canadarmWrapper.state.q.copy(), 32, 0.01)
             self.controller.setReference(jointTraj, poseTraj)
 
-            # torch.cuda.synchronize()
-            # time1 = time.time()
-
+            torch.cuda.synchronize()
+            time1 = time.time()
+            
             qdes, vdes = self.controller.compute_control_input()
-
-            # torch.cuda.synchronize()
-            # time2 = time.time()
-            # self._logger.info(f"solver total time: {time2 - time1}")
+            
+            torch.cuda.synchronize()
+            time2 = time.time()
+            self._logger.info(f"solver total time: {time2 - time1}")
 
             self.qdes = qdes.clone().cpu().numpy()
             self.vdes = vdes.clone().cpu().numpy()
+        else:
+            self.controller.warm_up()
         return
 
 

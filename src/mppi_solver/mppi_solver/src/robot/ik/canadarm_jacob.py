@@ -1,11 +1,15 @@
-from rclpy.logging import get_logger
-from time import time
 import torch
+import torch.nn as nn
 
-class CanadarmJacob:
+from rclpy.logging import get_logger
+
+
+class CanadarmJacob(nn.Module):
     def __init__(self, params, tensor_args):
+        super().__init__()
         self.logger = get_logger("Canadarm_Jacobian")
         self.tensor_args = tensor_args
+
         self.n_samples = params['mppi']['sample']
         self.n_horizon = params['mppi']['horizon']
         self.n_action = params['mppi']['action']
@@ -56,7 +60,6 @@ class CanadarmJacob:
                                         [0, 0, 0,   1]], **self.tensor_args)
         
         link0_com = torch.matmul(tf_link0, com_link0_local)
-
         self.base_com_pose = link0_com[:3,3].clone() * 243.66 / (100000.0 + 243.66)
 
         # for optimization
@@ -68,28 +71,28 @@ class CanadarmJacob:
         self.mass_11action11 = self.mass_list.view(1,1,self.n_action,1,1)
 
 
-    def make_skew_mat(self, p):
-        x, y, z = p[..., 0], p[..., 1], p[..., 2]
-        row_zero = torch.zeros_like(x)
-        return torch.stack([torch.stack([row_zero, -z, y], dim=-1), torch.stack([z, row_zero, -x], dim =-1), torch.stack([-y, x, row_zero], dim=-1)],dim=-2)
+    def forward(self, com_list: torch.Tensor, link_pose_list: torch.Tensor, bm: bool) -> torch.Tensor:
+        if bm:
+            return self.compute_jacob_bm(com_list, link_pose_list)
+        else:
+            return self.compute_jacobian(link_pose_list)
 
 
     def compute_jacobian(self, link_pose_list: torch.Tensor):
-        # link_pose_list = torch.stack(link_pose_list, dim=-1).to(**self.tensor_args)
-        n_samples, n_horizon, _, _, _ = link_pose_list.shape
-        jacob = torch.zeros((n_samples, n_horizon, 6, self.n_action), **self.tensor_args)
+        with torch.no_grad():
+            n_samples, n_horizon, _, _, _ = link_pose_list.shape
+            jacob = torch.zeros((n_samples, n_horizon, 6, self.n_action), **self.tensor_args)
 
-        del_p = link_pose_list[:,:,:3,3,-2].unsqueeze(-1) - link_pose_list[:,:,:3,3,:self.n_action]
-        rot = link_pose_list[:,:,:3, self.axis_list, self.link_list]
-        rot[...,4] *= -1
+            del_p = link_pose_list[:,:,:3,3,-2].unsqueeze(-1) - link_pose_list[:,:,:3,3,:self.n_action]
+            rot = link_pose_list[:,:,:3, self.axis_list, self.link_list]
+            rot[...,4] *= -1
 
-        jacob[:,:,:3,:] = torch.cross(rot, del_p, dim=2)
-        jacob[:,:,3:,:] = rot.clone()
+            jacob[:,:,:3,:] = torch.cross(rot, del_p, dim=2)
+            jacob[:,:,3:,:] = rot.clone()
         return jacob
     
 
     def compute_jacobian_cpu(self, link_pose_list: torch.Tensor):
-        # link_pose_list = torch.stack(link_pose_list, dim=-1)
         jacob = torch.zeros((6, self.n_action))
 
         del_p = link_pose_list[:3,3,-2].unsqueeze(-1) - link_pose_list[:3,3,:self.n_action]
@@ -117,19 +120,6 @@ class CanadarmJacob:
 
         return base_jacob
     
-    def compute_adj_mat(self, base_pose):
-        base_origin = torch.eye((4))
-
-        # Assumption : Base Origin is Origin of World
-        del_p = base_pose[:3, 3].clone()
-        rot_b = base_pose[:3,:3].clone()
-        skew_p = self.make_skew_mat(del_p)
-        
-        adj_mat = torch.zeros((6,6))
-        adj_mat[:3,:3] = adj_mat[3:,3:] = rot_b.clone()
-        adj_mat[:3,3:] = torch.matmul(skew_p, rot_b)
-
-        return adj_mat
 
     # 이게 일단은 안쓰이나봄?
     # compute jacobian considering floating base
@@ -157,8 +147,12 @@ class CanadarmJacob:
             del_p_skew_mul = self.make_skew_mul_mat(del_p.permute(0,1,3,2))
             H_w = torch.sum(self.inertial_11action33 + self.mass_11action11 * del_p_skew_mul, dim=2)
 
-            H_wphi = torch.einsum('aij,shja->shia', self.sum_inertial, jacob_r) + \
-                    torch.sum(torch.einsum('shaij,shjk->shaik', del_p_skew, jacob_t) * self.mass_H_wphi_mask, dim=2)
+            H_wphi_term1 = torch.einsum('aij,shja->shia', self.sum_inertial, jacob_r)
+
+            jac_w = jacob_t.unsqueeze(2) * self.mass_H_wphi_mask
+            H_wphi_term2 = torch.einsum('shaij,shajk->shik', del_p_skew, jac_w)
+
+            H_wphi = H_wphi_term1 + H_wphi_term2
 
             system_com = torch.einsum('ntci,i->ntc', com_list, self.mass_list) / self.total_mass
             r_og_skew = self.make_skew_mat(system_com - self.base_com_pose)
@@ -166,13 +160,52 @@ class CanadarmJacob:
             H_s = self.total_mass * (torch.matmul(r_og_skew, r_og_skew)) + H_w
             H_theta = H_wphi - torch.matmul(r_og_skew, jacob_tw)
 
-            jacob_bm = torch.zeros((n_samples, n_horizon, 6, 7), **self.tensor_args)
-
             H_s_inv = self.invert_3x3(H_s)
+
+            jacob_bm = torch.zeros((n_samples, n_horizon, 6, 7), **self.tensor_args)
 
             jacob_bm[:,:,:3,:] = -(jacob_tw / self.total_mass + torch.matmul(torch.matmul(r_og_skew, H_s_inv), H_theta))
             jacob_bm[:,:,3:,:] = -torch.matmul(H_s_inv, H_theta)
         return jacob_bm
+
+
+    def make_skew_mat(self, p):
+        x, y, z = p[..., 0], p[..., 1], p[..., 2]
+        row_zero = torch.zeros_like(x)
+        return torch.stack([torch.stack([row_zero, -z, y], dim=-1), torch.stack([z, row_zero, -x], dim =-1), torch.stack([-y, x, row_zero], dim=-1)],dim=-2)
+
+
+    def make_skew_mul_mat(self, p: torch.Tensor) -> torch.Tensor:
+        x, y, z = p.unbind(-1)
+
+        r2 = x*x + y*y + z*z
+
+        m00 =  r2 - x*x
+        m11 =  r2 - y*y
+        m22 =  r2 - z*z
+        m01 = - x*y
+        m02 = - x*z
+        m12 = - y*z
+
+        row0 = torch.stack([m00, m01, m02], dim=-1)
+        row1 = torch.stack([m01, m11, m12], dim=-1)
+        row2 = torch.stack([m02, m12, m22], dim=-1)
+        return torch.stack([row0, row1, row2], dim=-2)
+    
+
+    def compute_adj_mat(self, base_pose):
+        base_origin = torch.eye((4))
+
+        # Assumption : Base Origin is Origin of World
+        del_p = base_pose[:3, 3].clone()
+        rot_b = base_pose[:3,:3].clone()
+        skew_p = self.make_skew_mat(del_p)
+        
+        adj_mat = torch.zeros((6,6))
+        adj_mat[:3,:3] = adj_mat[3:,3:] = rot_b.clone()
+        adj_mat[:3,3:] = torch.matmul(skew_p, rot_b)
+
+        return adj_mat
 
 
     def invert_3x3(self, H_s: torch.Tensor) -> torch.Tensor:
@@ -225,21 +258,4 @@ class CanadarmJacob:
 
             H_s_inv = H_inv.reshape(*batch_shape, 3, 3)
         return H_s_inv
-
     
-    def make_skew_mul_mat(self, p: torch.Tensor) -> torch.Tensor:
-        x, y, z = p.unbind(-1)
-
-        r2 = x*x + y*y + z*z
-
-        m00 =  r2 - x*x
-        m11 =  r2 - y*y
-        m22 =  r2 - z*z
-        m01 = - x*y
-        m02 = - x*z
-        m12 = - y*z
-
-        row0 = torch.stack([m00, m01, m02], dim=-1)
-        row1 = torch.stack([m01, m11, m12], dim=-1)
-        row2 = torch.stack([m02, m12, m22], dim=-1)
-        return torch.stack([row0, row1, row2], dim=-2)

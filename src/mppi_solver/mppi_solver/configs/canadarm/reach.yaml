@@ -18,7 +18,8 @@ mppi:
   manipulator_dof: 7
   mobile_dof: 0
   joint_order: ["Base_Joint", "Shoulder_Roll", "Shoulder_Yaw", "Elbow_Pitch", "Wrist_Pitch", "Wrist_Yaw", "Wrist_Roll"]
-
+  compile: True
+  
 cost:
   pose:
     stage_pose_weight: 40.0
@@ -56,7 +57,7 @@ cost:
 
 sample:
   selection: ['std', 'sobol', 'std_scaling', 'std_constacc_scaling', 'std_constacc', 'sobol_constacc']
-  selection_weights: [ 0.2, 0.1, 0.2, 0.2, 0.2, 0.1 ]
+  selection_weights: [ 0.25, 0.05, 0.25, 0.2, 0.2, 0.05 ]
   sigma_scale: 3.0
   kappa: 0.005
   sigma_update: true

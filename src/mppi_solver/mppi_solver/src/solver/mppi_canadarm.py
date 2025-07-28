@@ -4,6 +4,7 @@ import math
 import yaml
 import time
 from datetime import datetime
+from typing import Tuple
 
 # Linear Algebra
 import numpy as np
@@ -21,7 +22,7 @@ from mppi_solver.src.solver.sampling.mixed_noise import MixedSampling
 from mppi_solver.src.solver.cost.cost_manager import CostManager
 
 # Kinematics Library
-from mppi_solver.src.robot.urdfFks.urdfFk import URDFForwardKinematics
+from mppi_solver.src.robot.urdfFks.urdf_forward_kinematics import URDFForwardKinematics
 from mppi_solver.src.robot.ik.canadarm_jacob import CanadarmJacob
 
 # TF Library
@@ -51,6 +52,7 @@ class MPPI():
         self.logger.info('Device: ' + self.device.type)
         torch.set_default_dtype(torch.float64)
         self.tensor_args = {'device': self.device, 'dtype': torch.float64}
+        self.is_compile = self.params['mppi']['compile']
 
         # Sampling parameters
         self.is_free_floating = params['mppi']['free_floating']
@@ -78,11 +80,6 @@ class MPPI():
         self.u = torch.zeros((self.n_action), **self.tensor_args)
         self.u_prev = torch.zeros((self.n_horizon, self.n_action), **self.tensor_args)
 
-        # Buffer
-        self.buffer_size = 10
-        self.weight_buffer = torch.zeros((self.buffer_size, self.n_samples), **self.tensor_args)
-        self.action_buffer = torch.zeros((self.buffer_size, self.n_samples, self.n_horizon, self.n_action), **self.tensor_args)
-
         # Sampling class
         self.sample_gen = MixedSampling(self.params, self.tensor_args)
 
@@ -108,12 +105,16 @@ class MPPI():
         urdf_file_path = os.path.join(get_package_share_directory(package_name), "models", "canadarm", urdf_name)
 
         # Forward kinematics
-        self.fk_canadarm = URDFForwardKinematics(urdf_file_path, root_link='Base_SSRMS', end_links='EE_SSRMS_tip')
-        mount_tf = torch.eye(4, **self.tensor_args)
-        mount_tf[0:3, 0:3] = euler_angles_to_matrix(torch.tensor([3.1416, 0.0, 0.0]), 'XYZ')
-        mount_tf[0:3, 3] = torch.tensor([0.0, 0.0, 3.6])
-        self.fk_canadarm.set_mount_transformation(mount_tf)
-        self.fk_canadarm.set_samples_and_timesteps(self.n_samples, self.n_horizon, self.n_mobile_dof)
+        if self.is_compile:
+            try:
+                fk_canadarm = URDFForwardKinematics(params=self.params, urdf=urdf_file_path, root_link='Base_SSRMS', end_links='EE_SSRMS_tip', tensor_args=self.tensor_args)
+                self.fk_canadarm = torch.compile(fk_canadarm, fullgraph=True, mode="reduce-overhead")
+            except Exception as e:
+                self.logger.warning(f"Failed to compile URDF Kinematics: {e}")
+                self.logger.info(f"Using non-compiled URDF Kinematics")
+                self.fk_canadarm = URDFForwardKinematics(params=self.params, urdf=urdf_file_path, root_link='Base_SSRMS', end_links='EE_SSRMS_tip', tensor_args=self.tensor_args)
+        else:
+            self.fk_canadarm = URDFForwardKinematics(params=self.params, urdf=urdf_file_path, root_link='Base_SSRMS', end_links='EE_SSRMS_tip', tensor_args=self.tensor_args)
 
         # Filter
         self.svg_filter = SavGolFilter()
@@ -130,7 +131,20 @@ class MPPI():
         self.uSamples = None
         self.param_gamma = self._lambda * (1.0 - 0.9)
         self.is_reaching = False
-        self.calc_jacob = CanadarmJacob(params, self.tensor_args)
+
+        if self.is_compile:
+            try:
+                calc_jacob = CanadarmJacob(params, self.tensor_args)
+                self.calc_jacob = torch.compile(calc_jacob, fullgraph=True)
+                self.jacob_compile = True
+            except Exception as e:
+                self.logger.warning(f"Failed to compile CanadarmJacob: {e}")
+                self.logger.info(f"Using non-compiled CanadarmJacob")
+                self.calc_jacob = CanadarmJacob(params, self.tensor_args)
+                self.jacob_compile = False
+        else:
+            self.calc_jacob = CanadarmJacob(params, self.tensor_args)
+            self.jacob_compile = False
 
         # Log
         self.sim_time = Time()
@@ -154,79 +168,50 @@ class MPPI():
         
 
     def check_reach(self):
-        ee_pose_mat, tf_list = self.fk_canadarm.forward_kinematics_cpu(self._q[self.n_mobile_dof:], 
-                                'EE_SSRMS_tip', 'Base_SSRMS', init_transformation=self.base_pose.tf_matrix(),
-                                free_floating=self.is_free_floating, base_move=self.is_base_move)
-        _ = self.calc_jacob.compute_jacobian_cpu(tf_list)      
-        self.ee_pose.from_matrix(ee_pose_mat)
+        self.fk_canadarm.set_samples_and_timesteps(n_samples=1, n_horizon=1)
+        ee_pose_mat, _, _ = self.fk_canadarm(self._q[self.n_mobile_dof:], 
+                'EE_SSRMS_tip', 'Base_SSRMS', init_transformation=self.base_pose.tf_matrix(self.tensor_args))
+        self.fk_canadarm.set_samples_and_timesteps(n_samples=self.n_samples, n_horizon=self.n_horizon)
+        
+        self.ee_pose.from_matrix(ee_pose_mat.squeeze(0).squeeze(0))
 
         # pose_err = pos_diff(self.ee_pose, self.target_pose)
         ee_ori_mat = euler_angles_to_matrix(self.ee_pose.rpy, "ZYX")
-        target_ori_mat = euler_angles_to_matrix(self.target_pose.rpy.cpu(), "ZYX")
+        target_ori_mat = euler_angles_to_matrix(self.target_pose.rpy, "ZYX")
         diff_ori_mat = torch.matmul(torch.linalg.inv(ee_ori_mat), target_ori_mat)
-        diff_ori_quat = matrix_to_quaternion(diff_ori_mat)
+        # diff_ori_quat = matrix_to_quaternion(diff_ori_mat)
         self.diff_ori_3d = matrix_to_euler_angles(diff_ori_mat, "ZYX")
-        self.target_dist = torch.norm(self.ee_pose.pose - self.target_pose.pose.cpu(), p=2)
+        self.target_dist = torch.norm(self.ee_pose.pose - self.target_pose.pose, p=2)
 
         if self.target_dist < 0.05:
             return True
         else:
             return False
-    
+        
 
-    def compute_control_input(self):
-        # torch.cuda.synchronize()
-        # check1_time = time.time()
-
+    def compute_control_input(self) -> Tuple[torch.Tensor, torch.Tensor]:
         if self.check_reach():
             return self.qdes, self.vdes
         
-        # torch.cuda.synchronize()
-        # check2_time = time.time()
-        # self.logger.info(f"check1: {check2_time - check1_time}")
-        
         self.MATLAB_log()
-
-        # torch.cuda.synchronize()
-        # check1_time = time.time()
-        # self.logger.info(f"check2: {check1_time - check2_time}")
 
         u = self.u_prev.clone()
         noise = self.sample_gen.sampling(self._q)
         v = u + noise
-
-        # torch.cuda.synchronize()
-        # check2_time = time.time()
-        # self.logger.info(f"check3: {check2_time - check1_time}")
-
+        
         qSamples, vSamples = self.sample_gen.get_sample_joint(v, self._q, self._qdot, self.dt)
         qSamples = qSamples.to(**self.tensor_args)
         vSamples = vSamples.to(**self.tensor_args)
 
-        # torch.cuda.synchronize()
-        # check1_time = time.time()
-        # self.logger.info(f"check4: {check1_time - check2_time}")
+        trajectory, link_list, com_list = self.fk_canadarm(qSamples,
+                                        'EE_SSRMS_tip', 'Base_SSRMS', self.base_pose.tf_matrix(self.tensor_args))
 
-        # torch.cuda.synchronize()
-        # check1_time = time.time()
-        # 0.03 sec
-        trajectory, link_list, com_list = self.fk_canadarm.forward_kinematics(qSamples, 'EE_SSRMS_tip', 'Base_SSRMS', \
-                    self.base_pose.tf_matrix(self.tensor_args), free_floating=self.is_free_floating, base_move=self.is_base_move)
-        
-        # torch.cuda.synchronize()
-        # check2_time = time.time()
-        # self.logger.info(f"check5: {check2_time - check1_time}")
-
-        # torch.cuda.synchronize()
-        # check2_time = time.time()
-        # self.logger.info(f"check1: {check2_time - check1_time}")
-        
-        jacob = self.calc_jacob.compute_jacobian(link_list)
-        jacob_bm = self.calc_jacob.compute_jacob_bm(com_list, link_list)
-
-        # torch.cuda.synchronize()
-        # check1_time = time.time()
-        # self.logger.info(f"check6: {check1_time - check2_time}")
+        if self.jacob_compile:
+            jacob = self.calc_jacob(com_list, link_list, bm=False)
+            jacob_bm = self.calc_jacob(com_list, link_list, bm=True)
+        else:
+            jacob = self.calc_jacob.compute_jacobian(link_list)
+            jacob_bm = self.calc_jacob.compute_jacob_bm(com_list, link_list)
 
         self.cost_manager.update_pose_cost(qSamples, v, vSamples, trajectory, self.reference_joint, self.reference_se3, self.target_pose)
         self.cost_manager.update_covar_cost(u, v, self.sample_gen.sigma_matrix)
@@ -236,52 +221,23 @@ class MPPI():
         self.cost_manager.update_reference_cost(link_list[...,-2])
         self.cost_manager.update_base_disturbance_cost(jacob_bm)
 
-        # torch.cuda.synchronize()
-        # check2_time = time.time()
-        # self.logger.info(f"check7: {check2_time - check1_time}")
-
         S = self.cost_manager.compute_all_cost()
-
-        # torch.cuda.synchronize()
-        # check1_time = time.time()
-        # self.logger.info(f"check8: {check1_time - check2_time}")
 
         w = self.compute_weights(S, self._lambda)
         w_expanded = w.view(-1, 1, 1)
         w_eps = torch.sum(w_expanded * noise, dim = 0)
         w_eps = self.svg_filter.savgol_filter_torch(w_eps, window_size=9, polyorder=2, tensor_args=self.tensor_args)
 
-        # torch.cuda.synchronize()
-        # check2_time = time.time()
-        # self.logger.info(f"check9: {check2_time - check1_time}")
-
         u += w_eps
 
-        # torch.cuda.synchronize()
-        # check1_time = time.time()
-        # self.logger.info(f"check10: {check1_time - check2_time}")
-
         self.sample_gen.update_distribution(u, v, w, noise)
-
-        # torch.cuda.synchronize()
-        # check2_time = time.time()
-        # self.logger.info(f"check11: {check2_time - check1_time}")
 
         self.u_prev = u.clone()
         self.u = u[0].clone()
         self.noise_prev = noise.clone()
 
-        # torch.cuda.synchronize()
-        # check1_time = time.time()
-        # self.logger.info(f"check12: {check1_time - check2_time}")
-
         self.vdes = self._qdot + self.u * self.dt
         self.qdes = self._q + self._qddot * self.dt + 0.5 * self.u * self.dt * self.dt
-
-        # torch.cuda.synchronize()
-        # check2_time = time.time()
-        # self.logger.info(f"check13: {check2_time - check1_time}")
-
         return self.qdes, self.vdes
 
 
@@ -293,11 +249,12 @@ class MPPI():
 
     def MATLAB_log(self):
         q_prev, self.v_prev = self.sample_gen.get_prev_sample_joint(self.u_prev, self._q, self._qdot, self.dt)
-        self.fk_canadarm.robot._n_samples = 1
-        ee_traj_prev, link_list_prev, com_list_prev = self.fk_canadarm.forward_kinematics(q_prev, 'EE_SSRMS_tip', 'Base_SSRMS', \
-                       self.base_pose.tf_matrix(self.tensor_args), free_floating=self.is_free_floating, base_move=self.is_base_move)
+        self.fk_canadarm.set_samples_and_timesteps(n_samples=1, n_horizon=self.n_horizon)
+        ee_traj_prev, link_list_prev, com_list_prev = self.fk_canadarm(q_prev,
+                                                    'EE_SSRMS_tip', 'Base_SSRMS', self.base_pose.tf_matrix(self.tensor_args))
+        self.fk_canadarm.set_samples_and_timesteps(n_samples=self.n_samples, n_horizon=self.n_horizon)
+        
         ee_traj_prev = ee_traj_prev.squeeze(0).cpu()
-        self.fk_canadarm.robot._n_samples = self.n_samples
         ee_jacobian_prev = self.calc_jacob.compute_jacobian(link_list_prev)
         ee_jacobian_prev = ee_jacobian_prev.squeeze(0)
 
@@ -372,3 +329,17 @@ class MPPI():
     def setReference(self, reference_joint: torch.Tensor, reference_se3: torch.Tensor):
         self.reference_joint = reference_joint.clone()
         self.reference_se3 = reference_se3.clone()
+        return
+
+    def warm_up(self):
+        qSamples = torch.zeros((1, self.n_horizon, self.n_action), **self.tensor_args)
+        self.fk_canadarm.set_samples_and_timesteps(n_samples=1, n_horizon=self.n_horizon)
+        self.fk_canadarm(qSamples, 'EE_SSRMS_tip', 'Base_SSRMS', self.base_pose.tf_matrix(self.tensor_args))
+        self.fk_canadarm.set_samples_and_timesteps(n_samples=self.n_samples, n_horizon=self.n_horizon)
+
+        qSamples = torch.zeros((self.n_samples, self.n_horizon, self.n_action), **self.tensor_args)
+        _, link_list, com_list = self.fk_canadarm(qSamples, 'EE_SSRMS_tip', 'Base_SSRMS', self.base_pose.tf_matrix(self.tensor_args))
+
+        self.calc_jacob(com_list, link_list, bm=False)
+        self.calc_jacob(com_list, link_list, bm=True)
+        return
