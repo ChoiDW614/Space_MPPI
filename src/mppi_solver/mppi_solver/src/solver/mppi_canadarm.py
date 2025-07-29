@@ -198,7 +198,7 @@ class MPPI():
         u = self.u_prev.clone()
         noise = self.sample_gen.sampling(self._q)
         v = u + noise
-        
+
         qSamples, vSamples = self.sample_gen.get_sample_joint(v, self._q, self._qdot, self.dt)
         qSamples = qSamples.to(**self.tensor_args)
         vSamples = vSamples.to(**self.tensor_args)
