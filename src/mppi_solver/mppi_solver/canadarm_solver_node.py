@@ -94,7 +94,7 @@ class MppiSolverNode(Node):
         
         self.joint_state_subscriber = self.create_subscription(DynamicJointState, '/dynamic_joint_states', self.joint_state_callback, subscribe_qos_profile)
         self.base_state_subscriber = self.create_subscription(TransformStamped, '/model/canadarm/pose', self.model_state_callback, subscribe_qos_profile2)
-        self.target_state_subscriber = self.create_subscription(TransformStamped, '/model/ets_vii/pose', self.target_state_callback, subscribe_qos_profile)
+        self.target_state_subscriber = self.create_subscription(TransformStamped, '/model/ets_vii/pose', self.target_state_callback, subscribe_qos_profile2)
         self.sim_clock_subscriber = self.create_subscription(Clock, '/world/default/clock', self.sim_clock_callback, subscribe_qos_profile)
         self.collision_target_subscriber = self.create_subscription(PoseArray, '/world/default/dynamic_pose/info', self.collision_target_callback, subscribe_qos_profile)
 
@@ -149,12 +149,12 @@ class MppiSolverNode(Node):
 
             # torch.cuda.synchronize()
             # time1 = time.time()
-            
+
             qdes, vdes = self.controller.compute_control_input()
-            
+
             # torch.cuda.synchronize()
             # time2 = time.time()
-            # self._logger.info(f"solver total time: {time2 - time1}")
+            # self._logger.info(f"time: {time2 - time1}")
 
             self.qdes = qdes.clone().cpu().numpy()
             self.vdes = vdes.clone().cpu().numpy()
@@ -212,17 +212,16 @@ class MppiSolverNode(Node):
                 self.docking_interface.set_true_docking_pose(msg)
 
                 # calculate velocity
-                self.docking_interface.update_velocity()
+                # self.docking_interface.update_velocity()
 
                 # kalman filter update
-                self.docking_interface.ekf_update()
+                # self.docking_interface.ekf_update()
 
                 self.controller.set_target_pose(self.docking_interface.true_align_docking_pose)
                 # self.controller.set_predict_target_pose(self.docking_interface.predict_pose)
 
                 self.target = deepcopy(self.docking_interface.true_align_docking_pose)
                 self.targetSE3 = pin.XYZQUATToSE3(np.array([self.target.pose[0], self.target.pose[1], self.target.pose[2], self.target.orientation[0], self.target.orientation[1], self.target.orientation[2], self.target.orientation[3]]))
-                # self.get_logger().info(f"Target : {self.targetSE3}")
 
                 # prev state
                 self.docking_interface.pose_prev = self.docking_interface.pose

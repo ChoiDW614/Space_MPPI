@@ -8,19 +8,6 @@ from mppi_solver.src.solver.cost.pts.network import *
 import torch.quantization as tq
 
 
-class QuantMLP(nn.Module):
-    def __init__(self):
-        super().__init__()
-        self.quant   = tq.QuantStub()
-        self.layers  = MLPRegressionNormDropoutELU()
-        self.dequant = tq.DeQuantStub()
-
-    def forward(self, x):
-        x = self.quant(x)
-        x = self.layers(x)
-        return self.dequant(x)
-
-
 class CollisionAvoidanceCost():
     def __init__(self, params, gamma: float, n_horizon: int, tensor_args):
         self.logger = get_logger("Joint_Space_Cost")

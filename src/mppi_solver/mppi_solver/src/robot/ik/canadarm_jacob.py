@@ -1,6 +1,6 @@
 import torch
 import torch.nn as nn
-
+import time
 from rclpy.logging import get_logger
 
 
@@ -13,6 +13,7 @@ class CanadarmJacob(nn.Module):
         self.n_samples = params['mppi']['sample']
         self.n_horizon = params['mppi']['horizon']
         self.n_action = params['mppi']['action']
+        self.n_mani_dof = params['mppi']['manipulator_dof']
 
         self.axis_list = torch.tensor([2, 0, 2, 2, 2, 0, 2], dtype=torch.long, device=self.tensor_args['device'])
         self.link_list = torch.arange(self.n_action, device=self.tensor_args['device'])   
@@ -49,31 +50,32 @@ class CanadarmJacob(nn.Module):
         self.inertial_list[6,1,1] = 44.41
         self.inertial_list[6,2,2] = 44.41
         
-        tf_link0 = torch.tensor([[1, 0,   0, 0],
-                                 [0,-1,   0, 0],
-                                 [0, 0, 1.3, 6],
-                                 [0, 0,   0, 1]], **self.tensor_args)
+        self.tf_link0 = torch.tensor([[1, 0,   0, 0],
+                                     [0,-1,   0, 0],
+                                     [0, 0, 1.3, 6],
+                                     [0, 0,   0, 1]], **self.tensor_args)
+            
+        self.com_link0_local = torch.tensor([[1, 0, 0,   0],
+                                             [0, 1, 0,   0],
+                                             [0, 0, 1, 0.5],
+                                             [0, 0, 0,   1]], **self.tensor_args)
         
-        com_link0_local = torch.tensor([[1, 0, 0,   0],
-                                        [0, 1, 0,   0],
-                                        [0, 0, 1, 0.5],
-                                        [0, 0, 0,   1]], **self.tensor_args)
-        
-        link0_com = torch.matmul(tf_link0, com_link0_local)
+        link0_com = torch.matmul(self.tf_link0, self.com_link0_local)
         self.base_com_pose = link0_com[:3,3].clone() * 243.66 / (100000.0 + 243.66)
 
-        # for optimization
-        self.sum_mass = torch.cumsum(self.mass_list.flip(0), dim=0).flip(0).view(1, 1, 1, self.n_action)
-        self.sum_inertial = torch.cumsum(self.inertial_list.flip(0), dim=0).flip(0)
-        self.H_wphi_mask = torch.tril(torch.ones(7,7, dtype=torch.bool, device=self.tensor_args['device'])).view(1,1,self.n_action,1,self.n_action)
-        self.mass_H_wphi_mask = self.mass_list.view(1,1,self.n_action,1,1) * self.H_wphi_mask
-        self.inertial_11action33 = self.inertial_list.view(1,1,self.n_action,3,3)
-        self.mass_11action11 = self.mass_list.view(1,1,self.n_action,1,1)
+        # for optimization 
+        self.I_0 = torch.diag(torch.tensor([69585.02, 69585.02, 66666.664], **self.tensor_args))
+        self.I_sum = torch.sum(self.inertial_list, dim=0)
+        self.mass_list_sum = torch.sum(self.mass_list)
+        self.lower_tri_mask = torch.tril(torch.ones(self.n_mani_dof, self.n_mani_dof, dtype=torch.bool, device=self.tensor_args['device'])) # lower triangular matrix
+        self.J_tw_mass_mask = (self.lower_tri_mask * self.mass_list.view(7,1)).view(1, 1, self.n_mani_dof, self.n_mani_dof, 1)
+        self.lower_tri_mask = self.lower_tri_mask.view(1, 1, 7, 7, 1)
+        self.cross_eps = torch.tensor([[[0,0,0],[0,0,1],[0,-1,0]], [[0,0,-1],[0,0,0],[1,0,0]],[[0,1,0],[-1,0,0],[0,0,0]]], **self.tensor_args)
 
 
-    def forward(self, com_list: torch.Tensor, link_pose_list: torch.Tensor, bm: bool) -> torch.Tensor:
+    def forward(self, com_list: torch.Tensor, link_pose_list: torch.Tensor, jabobian: torch.Tensor = None, bm: bool = False) -> torch.Tensor:
         if bm:
-            return self.compute_jacob_bm(com_list, link_pose_list)
+            return self.compute_jacob_bm(com_list, link_pose_list, jabobian)
         else:
             return self.compute_jacobian(link_pose_list)
 
@@ -131,41 +133,86 @@ class CanadarmJacob(nn.Module):
         return torch.matmul(adj_mat, manip_jacob)
     
 
-    def compute_jacob_bm(self, com_list, link_pose_list):
-        with torch.no_grad():
-            n_samples, n_horizon, _, _ = com_list.shape
+    def compute_jacob_bm(self, com_list: torch.Tensor, link_pose_list: torch.Tensor, jacobian: torch.Tensor) -> torch.Tensor:
+        n_samples, n_horizon, _, _ = com_list.shape
+        # com_list:       [s, h, 3, 7]
+        # link_pose_list: [s, h, 4, 4, 8]
+        # jacobian:       [s, h, 6, 7]
+        # J_ri:           [s, h, 3, 7]
+        system_com = self.compute_system_com(com_list)
+        r_og = system_com - self.base_com_pose.view(1, 1, -1)                           # [s, h, 3]
+        r_og_skew = self.make_skew_mat(r_og).contiguous()                               # [s, h, 3, 3]
 
-            del_p = com_list[:,:,:,:self.n_action] - link_pose_list[:,:,:3,3,:self.n_action]
-            del_p_skew = self.make_skew_mat(del_p.permute(0,1,3,2)).contiguous()
-            rot = link_pose_list[:,:,:3,self.axis_list,self.link_list]
-            rot[...,4] *= -1
+        J_ri = jacobian[:,:,:3,:]                                                       # [s, h, 3, 7]
+        rp_i = com_list - link_pose_list[..., :3, 3, :self.n_mani_dof]                  # [s, h, 3, 7]
 
-            jacob_t = torch.cross(rot, del_p, dim=2)
-            jacob_r = rot.clone()
-            jacob_tw = jacob_t * self.sum_mass
-            
-            del_p_skew_mul = self.make_skew_mul_mat(del_p.permute(0,1,3,2))
-            H_w = torch.sum(self.inertial_11action33 + self.mass_11action11 * del_p_skew_mul, dim=2)
+        J_ri = J_ri.permute(0,1,3,2).unsqueeze(2).expand(-1, -1, 7, -1, -1)
+        rp_i = rp_i.permute(0,1,3,2).unsqueeze(3).expand(-1, -1, -1, 7, -1)
 
-            H_wphi_term1 = torch.einsum('aij,shja->shia', self.sum_inertial, jacob_r)
+        cross_all = torch.cross(J_ri, rp_i, dim=-1)                                     # [s, h, 7, 7, 3]
+        J_tw = torch.sum(cross_all * self.J_tw_mass_mask, dim=2).permute(0, 1, 3, 2).contiguous() # [s, h, 3, 7]
 
-            jac_w = jacob_t.unsqueeze(2) * self.mass_H_wphi_mask
-            H_wphi_term2 = torch.einsum('shaij,shajk->shik', del_p_skew, jac_w)
+        r_og_skew_mul = self.make_skew_mul_mat(r_og)                                    # [s, h, 3, 3]
+        H_w = self.I_sum.view(1, 1, 3, 3) + self.mass_list_sum * r_og_skew_mul + self.I_0
 
-            H_wphi = H_wphi_term1 + H_wphi_term2
+        r_oi = com_list - self.base_com_pose.view(1, 1, 3, 1)                           # [s, h, 3, 7]
+        skew_r_oi = self.make_skew_mat(r_oi.permute(0,1,3,2))                           # [s, h, 7, 3, 3]
 
-            system_com = torch.einsum('ntci,i->ntc', com_list, self.mass_list) / self.total_mass
-            r_og_skew = self.make_skew_mat(system_com - self.base_com_pose)
+        masked_Jri   = J_ri * self.lower_tri_mask                                       # [s, h, 7, 7, 3]
+        J_ti_mass    = cross_all * self.J_tw_mass_mask                                  # [s, h, 7, 7, 3]
 
-            H_s = self.total_mass * (torch.matmul(r_og_skew, r_og_skew)) + H_w
-            H_theta = H_wphi - torch.matmul(r_og_skew, jacob_tw)
+        H_w_phi_1 = torch.einsum('iad,btijd->btaj', self.inertial_list, masked_Jri)
+        H_w_phi_2 = torch.einsum('btiac,btijc->btaj', skew_r_oi, J_ti_mass)
 
-            H_s_inv = self.invert_3x3(H_s)
+        H_w_phi = H_w_phi_1 + H_w_phi_2
 
-            jacob_bm = torch.zeros((n_samples, n_horizon, 6, 7), **self.tensor_args)
+        H_theta = H_w_phi - torch.einsum('btij,btjk->btik', r_og_skew, J_tw)
 
-            jacob_bm[:,:,:3,:] = -(jacob_tw / self.total_mass + torch.matmul(torch.matmul(r_og_skew, H_s_inv), H_theta))
-            jacob_bm[:,:,3:,:] = -torch.matmul(H_s_inv, H_theta)
+        H_s = self.total_mass * torch.matmul(r_og_skew, r_og_skew) + H_w
+        H_s_inv = self.invert_3x3(H_s)
+
+        jacob_bm = torch.zeros((n_samples, n_horizon, 6, 7), **self.tensor_args)
+        jacob_bm[:,:,:3,:] = -(J_tw / self.total_mass + torch.matmul(torch.matmul(r_og_skew, H_s_inv), H_theta))
+        jacob_bm[:,:,3:,:] = - torch.matmul(H_s_inv, H_theta)
+
+        return jacob_bm
+    
+
+    def compute_jacob_bm_v2(self, com_list, link_pose_list, jacobian):
+        n_samples, n_timesteps, _, _ = com_list.shape
+
+        J_tw = torch.zeros((n_samples, n_timesteps, 3, 7)).to(**self.tensor_args)
+        J_ri = torch.zeros((n_samples, n_timesteps, 3, 7)).to(**self.tensor_args)
+        H_w = torch.zeros((n_samples, n_timesteps, 3, 3)).to(**self.tensor_args)
+        H_w_phi = torch.zeros((n_samples, n_timesteps, 3, 7)).to(**self.tensor_args)
+
+        system_com = self.compute_system_com(com_list)
+        r_og  = system_com - self.base_com_pose.view(1,1,-1)
+        skew_r_og = self.make_skew_mat(r_og)
+
+        for i in range(7):
+            J_ti = torch.zeros((n_samples, n_timesteps, 3, 7)).to(**self.tensor_args)
+            J_ri[:,:,:,:i+1] = jacobian[:,:,:3,:i+1]
+            for j in range(i+1):
+                J_ti[:,:,:,j] = torch.cross(J_ri[:,:,:,j], com_list[...,i].clone()-link_pose_list[:,:,:3,3,i].clone(), dim=-1)
+            J_tw += J_ti.clone() * self.mass_list[i]
+            r_oi = com_list[...,i].clone() - self.base_com_pose.clone()
+            skew_r_oi = self.make_skew_mat(r_oi)
+            H_w += self.inertial_list[i,:,:].view(1,1,3,3) + self.mass_list[i] * torch.matmul(skew_r_og.transpose(-1,2), skew_r_og)
+            H_w_phi += torch.matmul(self.inertial_list[i,:,:].view(1,1,3,3), J_ri) + self.mass_list[i] * torch.matmul(skew_r_oi, J_ti)
+        H_w += self.I_0
+
+        H_s = self.total_mass * torch.matmul(skew_r_og, skew_r_og) + H_w
+        H_theta = H_w_phi - torch.matmul(skew_r_og, J_tw)
+
+        H_s_inv = torch.linalg.pinv(H_s)
+
+        jacob_bm = torch.zeros((n_samples, n_timesteps, 6, 7)).to(**self.tensor_args)
+        jacob_bm[:,:,:3,:] = -(J_tw/self.total_mass + torch.matmul(torch.matmul(skew_r_og, H_s_inv), H_theta))
+        jacob_bm[:,:,3:,:] = - torch.matmul(H_s_inv, H_theta)
+
+        # self.logger.info(f"diff: {torch.norm(jacob_bm2 - jacob_bm, p='fro')}")
+        
         return jacob_bm
 
 
@@ -259,3 +306,21 @@ class CanadarmJacob(nn.Module):
             H_s_inv = H_inv.reshape(*batch_shape, 3, 3)
         return H_s_inv
     
+
+    def base_update(self, base_pose: torch.Tensor) -> torch.Tensor:
+        # Base COM Update 
+        # Base = ISS + Link0 로 봄
+        # base_pose : tf_mat : torch(4,4)
+        base_pose_gpu = base_pose.to(**self.tensor_args)
+        link0_com = base_pose_gpu @ self.tf_link0 @ self.com_link0_local
+        self.base_com_pose = (link0_com[:3,3].clone() * 243.66 + base_pose_gpu[:3,3] * 100000.0) / (100000.0 + 243.66)
+
+
+    def compute_system_com(self, com_list: torch.Tensor) -> torch.Tensor:
+        n_samples, n_timesteps, _, dof = com_list.shape
+        r_com = torch.zeros((n_samples, n_timesteps, 3), **self.tensor_args)
+        for i in range(dof):
+            r_com += self.mass_list[i] * com_list[...,i].clone()
+        r_com += self.base_com_pose.view(1,1,-1) * ((100000.0 + 243.66))
+        
+        return r_com / self.total_mass

@@ -101,7 +101,7 @@ class URDFForwardKinematics(nn.Module):
             if init_transformation is None:
                 init_transformation = torch.eye(4, **self.tensor_args)
             else:
-                init_transformation = init_transformation.to(**self.tensor_args)
+                init_transformation = init_transformation.to(**self.tensor_args).clone()
 
             if parent_link is None:
                 parent_link = self._root_link

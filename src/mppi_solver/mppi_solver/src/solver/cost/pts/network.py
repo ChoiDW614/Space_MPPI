@@ -82,7 +82,7 @@ class MLP_Slim(nn.Module):
     def __init__(self):
         super().__init__()
         input_dims: int = 30
-        hidden_dims: list[int] = [128, 128, 128]
+        hidden_dims: list[int] = [128, 128, 128, 128]
         output_dims: int = 8
         dropout: float = 0.1
 
@@ -90,7 +90,7 @@ class MLP_Slim(nn.Module):
         prev_dim = input_dims
         for h in hidden_dims:
             layers.append(nn.Linear(prev_dim, h))
-            layers.append(nn.ELU())
+            layers.append(nn.GELU())
             layers.append(nn.Dropout(dropout))
             prev_dim = h
 

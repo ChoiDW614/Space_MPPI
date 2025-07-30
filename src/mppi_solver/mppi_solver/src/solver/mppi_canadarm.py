@@ -82,6 +82,7 @@ class MPPI():
 
         # Sampling class
         self.sample_gen = MixedSampling(self.params, self.tensor_args)
+        self.sample_gen = MixedSampling(self.params, self.tensor_args)
 
         # base control states
         self.base_pose = Pose(self.tensor_args)
@@ -105,16 +106,16 @@ class MPPI():
         urdf_file_path = os.path.join(get_package_share_directory(package_name), "models", "canadarm", urdf_name)
 
         # Forward kinematics
-        if self.is_compile:
-            try:
-                fk_canadarm = URDFForwardKinematics(params=self.params, urdf=urdf_file_path, root_link='Base_SSRMS', end_links='EE_SSRMS_tip', tensor_args=self.tensor_args)
-                self.fk_canadarm = torch.compile(fk_canadarm, fullgraph=True, mode="reduce-overhead")
-            except Exception as e:
-                self.logger.warning(f"Failed to compile URDF Kinematics: {e}")
-                self.logger.info(f"Using non-compiled URDF Kinematics")
-                self.fk_canadarm = URDFForwardKinematics(params=self.params, urdf=urdf_file_path, root_link='Base_SSRMS', end_links='EE_SSRMS_tip', tensor_args=self.tensor_args)
-        else:
-            self.fk_canadarm = URDFForwardKinematics(params=self.params, urdf=urdf_file_path, root_link='Base_SSRMS', end_links='EE_SSRMS_tip', tensor_args=self.tensor_args)
+        # if self.is_compile:
+        #     try:
+        #         fk_canadarm = URDFForwardKinematics(params=self.params, urdf=urdf_file_path, root_link='Base_SSRMS', end_links='EE_SSRMS_tip', tensor_args=self.tensor_args)
+        #         self.fk_canadarm = torch.compile(fk_canadarm, fullgraph=True, mode="reduce-overhead")
+        #     except Exception as e:
+        #         self.logger.warning(f"Failed to compile URDF Kinematics: {e}")
+        #         self.logger.info(f"Using non-compiled URDF Kinematics")
+        #         self.fk_canadarm = URDFForwardKinematics(params=self.params, urdf=urdf_file_path, root_link='Base_SSRMS', end_links='EE_SSRMS_tip', tensor_args=self.tensor_args)
+        # else:
+        self.fk_canadarm = URDFForwardKinematics(params=self.params, urdf=urdf_file_path, root_link='Base_SSRMS', end_links='EE_SSRMS_tip', tensor_args=self.tensor_args)
 
         # Filter
         self.svg_filter = SavGolFilter()
@@ -132,19 +133,16 @@ class MPPI():
         self.param_gamma = self._lambda * (1.0 - 0.9)
         self.is_reaching = False
 
-        if self.is_compile:
-            try:
-                calc_jacob = CanadarmJacob(params, self.tensor_args)
-                self.calc_jacob = torch.compile(calc_jacob, fullgraph=True)
-                self.jacob_compile = True
-            except Exception as e:
-                self.logger.warning(f"Failed to compile CanadarmJacob: {e}")
-                self.logger.info(f"Using non-compiled CanadarmJacob")
-                self.calc_jacob = CanadarmJacob(params, self.tensor_args)
-                self.jacob_compile = False
-        else:
-            self.calc_jacob = CanadarmJacob(params, self.tensor_args)
-            self.jacob_compile = False
+        # if self.is_compile:
+        #     try:
+        #         calc_jacob = CanadarmJacob(params, self.tensor_args)
+        #         self.calc_jacob = torch.compile(calc_jacob, fullgraph=True)
+        #     except Exception as e:
+        #         self.logger.warning(f"Failed to compile CanadarmJacob: {e}")
+        #         self.logger.info(f"Using non-compiled CanadarmJacob")
+        #         self.calc_jacob = CanadarmJacob(params, self.tensor_args)
+        # else:
+        self.calc_jacob = CanadarmJacob(params, self.tensor_args)
 
         # Log
         self.sim_time = Time()
@@ -196,7 +194,7 @@ class MPPI():
         self.MATLAB_log()
 
         u = self.u_prev.clone()
-        noise = self.sample_gen.sampling(self._q)
+        noise = self.sample_gen.sampling()
         v = u + noise
 
         qSamples, vSamples = self.sample_gen.get_sample_joint(v, self._q, self._qdot, self.dt)
@@ -206,12 +204,8 @@ class MPPI():
         trajectory, link_list, com_list = self.fk_canadarm(qSamples,
                                         'EE_SSRMS_tip', 'Base_SSRMS', self.base_pose.tf_matrix(self.tensor_args))
 
-        if self.jacob_compile:
-            jacob = self.calc_jacob(com_list, link_list, bm=False)
-            jacob_bm = self.calc_jacob(com_list, link_list, bm=True)
-        else:
-            jacob = self.calc_jacob.compute_jacobian(link_list)
-            jacob_bm = self.calc_jacob.compute_jacob_bm(com_list, link_list)
+        jacob = self.calc_jacob(com_list, link_list, bm=False)
+        jacob_bm = self.calc_jacob(com_list, link_list, jacob, bm=True)
 
         self.cost_manager.update_pose_cost(qSamples, v, vSamples, trajectory, self.reference_joint, self.reference_se3, self.target_pose)
         self.cost_manager.update_covar_cost(u, v, self.sample_gen.sigma_matrix)
@@ -255,10 +249,9 @@ class MPPI():
         self.fk_canadarm.set_samples_and_timesteps(n_samples=self.n_samples, n_horizon=self.n_horizon)
         
         ee_traj_prev = ee_traj_prev.squeeze(0).cpu()
-        ee_jacobian_prev = self.calc_jacob.compute_jacobian(link_list_prev)
+        ee_jacobian_prev = self.calc_jacob(com_list_prev, link_list_prev, bm=False)
+        jacob_bm = self.calc_jacob(com_list_prev, link_list_prev, ee_jacobian_prev, bm=True)
         ee_jacobian_prev = ee_jacobian_prev.squeeze(0)
-
-        jacob_bm = self.calc_jacob.compute_jacob_bm(com_list_prev, link_list_prev)
 
         prev_stage_cost     = self.cost_manager.pose_cost.compute_prev_stage_cost(ee_traj_prev, self.target_pose)
         prev_terminal_cost  = self.cost_manager.pose_cost.compute_prev_terminal_cost(ee_traj_prev, self.target_pose)
@@ -320,6 +313,7 @@ class MPPI():
     def set_base_pose(self, pos, ori):
         self.base_pose.pose = pos
         self.base_pose.orientation = ori
+        self.calc_jacob.base_update(self.base_pose.tf_matrix())
         return
     
     def set_collision_target(self, target: torch.Tensor):
@@ -340,6 +334,6 @@ class MPPI():
         qSamples = torch.zeros((self.n_samples, self.n_horizon, self.n_action), **self.tensor_args)
         _, link_list, com_list = self.fk_canadarm(qSamples, 'EE_SSRMS_tip', 'Base_SSRMS', self.base_pose.tf_matrix(self.tensor_args))
 
-        self.calc_jacob(com_list, link_list, bm=False)
-        self.calc_jacob(com_list, link_list, bm=True)
+        jaco = self.calc_jacob(com_list, link_list, bm=False)
+        self.calc_jacob(com_list, link_list, jaco, bm=True)
         return

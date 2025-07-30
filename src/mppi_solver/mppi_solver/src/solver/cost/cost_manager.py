@@ -50,7 +50,6 @@ class CostManager:
         self.reference_cost = ReferenceCost(self.reference_weights, self.gamma, self.n_horizon, self.dt, self.tensor_args)
         self.disturbace_cost = BaseDisturbanceCost(self.base_disturbance_weights, self.gamma, self.n_horizon, self.tensor_args)
 
-
         # For Pose Cost
         self.target : Pose
         self.eef_trajectories : torch.Tensor
@@ -130,7 +129,7 @@ class CostManager:
         S += self.collision_cost.compute_collision_cost(self.base_pose, self.qSamples, self.collision_target)
         S += self.stop_cost.compute_stop_cost(self.vSamples)
         S += self.ee_cost.compute_ee_cost(self.vSamples, self.jacobian, self.target_dist)
-        S += self.reference_cost.compute_reference_cost(self.link_list, self.pose_trajectories)
-        S += self.disturbace_cost.compute_base_disturbance_cost(self.jacob_bm, self.vSamples)
+        # S += self.reference_cost.compute_reference_cost(self.link_list, self.pose_trajectories)
+        # S += self.disturbace_cost.compute_base_disturbance_cost(self.jacob_bm, self.vSamples)
         return S
     

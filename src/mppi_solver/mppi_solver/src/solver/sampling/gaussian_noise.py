@@ -116,8 +116,13 @@ class GaussianSample():
             self.n_sample = n_sample
         # torch.manual_seed(self.seed)
         
-        gaussian = torch.randn(self.n_sample, self.n_horizon, self.n_action, device= self.device) 
-        self.sigma_matrix = self.sigma.expand(self.n_sample, self.n_horizon, -1, -1)
-        noise = torch.matmul(gaussian.unsqueeze(-2), self.sigma_matrix).squeeze(-2)
+        # standard_normal_noise = torch.randn(self.n_sample, self.n_horizon, self.n_action, **self.tensor_args)
+        # 1. Noise sampling: shape = (n_sample, n_action)
+        standard_normal_noise = torch.randn(self.n_samples, self.n_action, **self.tensor_args)
+        # 2. Expand over horizon: shape = (n_sample, n_horizon, n_action)
+        standard_normal_noise = standard_normal_noise.unsqueeze(1).expand(-1, self.n_horizon, -1)
+        self.sigma_matrix = self.sigma.expand(self.n_samples, self.n_horizon, -1, -1)
+        noise = torch.matmul(standard_normal_noise.unsqueeze(-2), self.sigma_matrix).squeeze(-2)
+        return noise
 
         return noise

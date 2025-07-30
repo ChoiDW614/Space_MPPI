@@ -65,39 +65,43 @@ class MixedSampling:
         return
     
 
-    def sampling(self, q: torch.Tensor=None):
+    def sampling(self):
         noise_list = []
 
         for sel, n_split in zip(self.selection, self.splits):
             # standard normal
             if sel == 'std':
+                if n_split == 0:
+                    continue
                 std_noise = self.standard_normal.n_sample_sampling(n_split)
                 std_noise = self.scaling_noise(std_noise, n_split)
-                scale, offset = self.compute_iqr_scale_and_offset(std_noise, ref_dist=self.std_ref)
-                noise_list.append(std_noise * scale + offset)
+                noise_list.append(std_noise)
 
             # Sobol sequence
             elif sel == 'sobol':
+                if n_split == 0:
+                    continue
                 sobol_noise = self.sobol_seq.n_sample_sampling(n_split)
                 sobol_noise = self.scaling_noise(sobol_noise, n_split)
-                scale, offset = self.compute_iqr_scale_and_offset(sobol_noise, ref_dist=self.std_ref)
-                noise_list.append(sobol_noise * scale + offset)
+                noise_list.append(sobol_noise)
 
             # standard Bspline
             elif sel == 'std_bspline':
+                if n_split == 0:
+                    continue
                 std_spline = self.standard_normal.n_sample_horizon_sampling(n_split, self.n_knot)
                 std_bspline_noise = self.bspline.bspline_sampling(std_spline, self.n_knot, n_split)
                 std_bspline_noise = self.scaling_noise(std_bspline_noise, n_split)
-                scale, offset = self.compute_iqr_scale_and_offset(std_bspline_noise, ref_dist=self.std_ref)
-                noise_list.append(std_bspline_noise * scale + offset)
+                noise_list.append(std_bspline_noise)
 
             # Sobol Bspline
             elif sel == 'sobol_bspline':
+                if n_split == 0:
+                    continue
                 sobol_spline = self.sobol_seq.n_sample_horizon_sampling(n_split, self.n_knot)
                 sobol_bspline_noise = self.bspline.bspline_sampling(sobol_spline, self.n_knot, n_split)
                 sobol_bspline_noise = self.scaling_noise(sobol_bspline_noise, n_split)
-                scale, offset = self.compute_iqr_scale_and_offset(sobol_bspline_noise, ref_dist=self.std_ref)
-                noise_list.append(sobol_bspline_noise * scale + offset)
+                noise_list.append(sobol_bspline_noise)
 
             # standard normal scaling
             elif sel == 'std_scaling':
@@ -105,32 +109,34 @@ class MixedSampling:
                 rem  = n_split - base * 3
                 splits = [base + (1 if i < rem else 0) for i in range(3)]
                 for r, ns in zip((0.75, 0.5, 0.25), splits):
+                    if ns == 0:
+                        continue
                     std_noise = self.standard_normal.n_sample_ratio_sampling(ns, r)
                     std_noise = self.scaling_noise(std_noise, ns)
-                    scale, offset = self.compute_iqr_scale_and_offset(std_noise, ref_dist=self.std_ref)
-                    noise_list.append(std_noise + offset)
+                    noise_list.append(std_noise)
 
-            elif sel == 'std_constacc_scaling' and q is not None:
+            elif sel == 'std_constacc_scaling':
                 base = n_split // 3
                 rem  = n_split - base * 3
                 splits = [base + (1 if i < rem else 0) for i in range(3)]
                 for r, ns in zip((0.75, 0.5, 0.25), splits):
+                    if ns == 0:
+                        continue
                     cv = self.standard_normal.n_sample_horizon_sampling(ns, 1).expand(-1, self.n_horizon, -1) * r
                     cv_noise = self.scaling_noise(cv, ns)
-                    scale, offset = self.compute_iqr_scale_and_offset(cv_noise, ref_dist=self.std_ref)
-                    noise_list.append(cv_noise + offset)
+                    noise_list.append(cv_noise)
 
             # std and Sobol constanct accel
-            elif sel in ('std_constacc', 'sobol_constacc') and q is not None:
+            elif sel in ('std_constacc', 'sobol_constacc'):
+                if n_split == 0:
+                    continue
                 if sel == 'std_constacc':
                     cv = self.standard_normal.n_sample_horizon_sampling(n_split, 1)
                 else:
                     cv = self.sobol_seq.n_sample_horizon_sampling(n_split, 1)
                 cv_full = cv.expand(-1, self.n_horizon, -1)
                 cv_noise = self.scaling_noise(cv_full, n_split)
-                
-                scale, offset = self.compute_iqr_scale_and_offset(cv_noise, ref_dist=self.std_ref)
-                noise_list.append(cv_noise * scale + offset)
+                noise_list.append(cv_noise)
 
         self.sigma_matrix = self.sigma.expand(self.n_sample, self.n_horizon, -1, -1) # For covar cost
         noise = torch.cat(noise_list, dim=0)
@@ -169,28 +175,3 @@ class MixedSampling:
         sigma_matrix = self.sigma.expand(n_split, self.n_horizon, -1, -1)
         noise = torch.matmul(noise.unsqueeze(-2), sigma_matrix).squeeze(-2)
         return noise
-
-
-    def compute_iqr_scale_and_offset(self, samples: torch.Tensor, q_low: float = 0.25, q_high: float = 0.75,
-                                    ref_q_low: float = 0.25, ref_q_high: float = 0.75, ref_dist: torch.Tensor = None
-                                    ) -> tuple[float, float]:
-        flat = samples.flatten()
-
-        ql_src = torch.quantile(flat, q_low)
-        qh_src = torch.quantile(flat, q_high)
-        iqr_src = qh_src - ql_src
-
-        if ref_dist is not None:
-            flat_ref = ref_dist.flatten()
-            ql_ref = torch.quantile(flat_ref, ref_q_low)
-            qh_ref = torch.quantile(flat_ref, ref_q_high)
-        else:
-            ql_ref = ref_q_low
-            qh_ref = ref_q_high
-
-        iqr_ref = qh_ref - ql_ref
-
-        scale = (iqr_ref / iqr_src).item()        # scale = IQR_ref / IQR_src
-        offset = (ql_ref - ql_src * scale).item()  # offset = Q1_ref - Q1_src * scale
-        return scale, offset
-    
