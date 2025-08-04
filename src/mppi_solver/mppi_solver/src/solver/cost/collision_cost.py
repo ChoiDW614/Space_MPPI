@@ -5,7 +5,6 @@ from mppi_solver.src.utils.pose import Pose
 from ament_index_python.packages import get_package_share_directory
 
 from mppi_solver.src.solver.cost.pts.network import *
-import torch.quantization as tq
 
 
 class CollisionAvoidanceCost():

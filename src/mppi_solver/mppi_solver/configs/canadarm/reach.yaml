@@ -27,16 +27,16 @@ cost:
     # terminal_pose_weight: 75.0
     # terminal_orientation_weight: 350.0
 
-    stage_pose_weight: 200.0
-    stage_orientation_weight: 50.0
-    terminal_pose_weight: 75.0
-    terminal_orientation_weight: 350.0
+    stage_pose_weight: 100.0
+    stage_orientation_weight: 350.0
+    terminal_pose_weight: 50
+    terminal_orientation_weight: 800.0
 
   covariance: 
     weight: 0.005
 
   action:
-    weight: 0.00035
+    weight: 0.001
   
   joint_space:
     centering_weight: 1.0
@@ -47,12 +47,12 @@ cost:
     softcap: 0.6
 
   stop:
-    weight: 0.3
+    weight: 0.25
     v_max: [ 0.0698132, 0.0698132, 0.0698132, 0.0698132, 0.0698132, 0.0698132, 0.0698132 ]
 
   end_effector:
-    weight: 0.3
-    distance_limit: 2.0
+    weight: 2.0
+    distance_limit: 1.0
 
   reference:
     weight: 0.45

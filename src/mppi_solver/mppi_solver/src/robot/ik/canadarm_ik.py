@@ -30,7 +30,7 @@ class IKSolver:
         self.robot = CanadarmWrapper(params)
         self.pgain = 100.0
         self.k_null = 0.1
-        self.prev_trajectory = np.zeros((32, 7))
+        self.prev_trajectory = np.zeros((params['mppi']['horizon'], 7))
 
 
     def forward_kinematics(self, q, base_pose: Pose):

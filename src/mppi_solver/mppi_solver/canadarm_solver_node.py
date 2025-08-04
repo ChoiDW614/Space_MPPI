@@ -74,9 +74,11 @@ class MppiSolverNode(Node):
         self.interface_values = None
         self.qdes = np.zeros(7)
         self.vdes = np.zeros(7)
+        self.ades = np.zeros(7)
 
         # Controller
         self.controller = MPPI(params)
+        self.n_horizon = params['mppi']['horizon']
 
         # Target states
         self.is_sim_ros2_connected = False
@@ -86,7 +88,8 @@ class MppiSolverNode(Node):
 
         # ROS2 topic name
         self.controller_name = params['mppi']['controller_name']
-        self.arm_topic = self.controller_name + '/target_joint_states'
+        # self.arm_topic = self.controller_name + '/target_joint_states'
+        self.arm_topic = self.controller_name + '/commands'
 
         # Model state subscriber
         subscribe_qos_profile = QoSProfile(depth=5, reliability=ReliabilityPolicy.BEST_EFFORT, durability=DurabilityPolicy.VOLATILE)
@@ -138,38 +141,50 @@ class MppiSolverNode(Node):
                 stime = time.time()
                 init_oMi = deepcopy(self.canadarmWrapper.iss_to_base * self.canadarmWrapper.state.oMi * self.canadarmWrapper.eef_to_tip)
                 self.canadarmIK.init_ik_trajectory(5.0, stime, init_oMi, targetSE3)
-                # self.tmp = self.canadarmIK.get_ik_joint_trajectory(stime, init_oMi,self.canadarmWrapper.state.q.copy(), 32, 0.01)
+                # self.tmp = self.canadarmIK.get_ik_joint_trajectory(stime, init_oMi,self.canadarmWrapper.state.q.copy(), self.n_horizon, 0.01)
                 self.is_init_trajectory = False
 
             self.canadarmIK.targetUpdate(self.targetSE3 * self.canadarmWrapper.eef_to_tip.inverse())
             oMi = self.canadarmWrapper.iss_to_base * self.canadarmWrapper.state.oMi
             ctime = time.time()
-            jointTraj, poseTraj = self.canadarmIK.get_ik_joint_trajectory2(ctime, oMi, self.canadarmWrapper.state.q.copy(), 32, 0.01)
+            jointTraj, poseTraj = self.canadarmIK.get_ik_joint_trajectory2(ctime, oMi, self.canadarmWrapper.state.q.copy(), self.n_horizon, 0.01)
             self.controller.setReference(jointTraj, poseTraj)
 
-            # torch.cuda.synchronize()
-            # time1 = time.time()
+            torch.cuda.synchronize()
+            time1 = time.time()
 
-            qdes, vdes = self.controller.compute_control_input()
+            qdes, vdes, ades = self.controller.compute_control_input()
 
-            # torch.cuda.synchronize()
-            # time2 = time.time()
-            # self._logger.info(f"time: {time2 - time1}")
+            torch.cuda.synchronize()
+            time2 = time.time()
+            self._logger.info(f"time: {time2 - time1}")
 
             self.qdes = qdes.clone().cpu().numpy()
             self.vdes = vdes.clone().cpu().numpy()
+            self.ades = ades.clone().cpu().numpy()
         else: 
             self.controller.warm_up()
         return
 
 
     def pub_timer_callback(self):
-        if self.is_sim_ros2_connected:
+        # if self.is_sim_ros2_connected:
+        if self.is_target and self.init_jointCB:
             self.arm_msg.data =[]
+            # for i in range(0,7):
+            #     self.arm_msg.data.append(self.qdes[i])
+            # for i in range(0,7):
+            #     self.arm_msg.data.append(self.vdes[i])
+
+            # for i, x in enumerate(self.arm_msg.data):
+            #     if isinstance(x, float) and math.isnan(x):
+            #         self.arm_msg.data[i] = 0.0
+
+            # u = self.canadarmWrapper.state.M @ self.ades + self.canadarmWrapper.state.G
+
+            u = self.canadarmWrapper.state.M @ self.ades + self.canadarmWrapper.state.G
             for i in range(0,7):
-                self.arm_msg.data.append(self.qdes[i])
-            for i in range(0,7):
-                self.arm_msg.data.append(self.vdes[i])
+                self.arm_msg.data.append(u[i])
 
             for i, x in enumerate(self.arm_msg.data):
                 if isinstance(x, float) and math.isnan(x):
@@ -195,6 +210,9 @@ class MppiSolverNode(Node):
             self.canadarmWrapper.computeAllTerms()
             self.init_jointCB = True
             self.matlab_logger.log("joint_states", [self.docking_interface.sim_time.time] + self.interface_values[:, 0].tolist())
+
+            # #chan
+            # self.get_logger().warn(f"oMi : {self.canadarmWrapper.state.oMi * self.canadarmWrapper.eef_to_tip}")
         return
     
 
@@ -222,7 +240,7 @@ class MppiSolverNode(Node):
 
                 self.target = deepcopy(self.docking_interface.true_align_docking_pose)
                 self.targetSE3 = pin.XYZQUATToSE3(np.array([self.target.pose[0], self.target.pose[1], self.target.pose[2], self.target.orientation[0], self.target.orientation[1], self.target.orientation[2], self.target.orientation[3]]))
-
+                # self.get_logger().info(f"Target : {self.targetSE3}")
                 # prev state
                 self.docking_interface.pose_prev = self.docking_interface.pose
                 self.docking_interface.time_prev = self.docking_interface.time

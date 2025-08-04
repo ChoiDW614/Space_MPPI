@@ -82,7 +82,6 @@ class MPPI():
 
         # Sampling class
         self.sample_gen = MixedSampling(self.params, self.tensor_args)
-        self.sample_gen = MixedSampling(self.params, self.tensor_args)
 
         # base control states
         self.base_pose = Pose(self.tensor_args)
@@ -181,15 +180,17 @@ class MPPI():
         self.diff_ori_3d = matrix_to_euler_angles(diff_ori_mat, "ZYX")
         self.target_dist = torch.norm(self.ee_pose.pose - self.target_pose.pose, p=2)
 
+        self.logger.info(f"target dist: {self.target_dist}")
+
         if self.target_dist < 0.05:
             return True
         else:
             return False
         
 
-    def compute_control_input(self) -> Tuple[torch.Tensor, torch.Tensor]:
+    def compute_control_input(self) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         if self.check_reach():
-            return self.qdes, self.vdes
+            return self.qdes, self.vdes, self.u
         
         self.MATLAB_log()
 
@@ -220,7 +221,7 @@ class MPPI():
         w = self.compute_weights(S, self._lambda)
         w_expanded = w.view(-1, 1, 1)
         w_eps = torch.sum(w_expanded * noise, dim = 0)
-        w_eps = self.svg_filter.savgol_filter_torch(w_eps, window_size=9, polyorder=2, tensor_args=self.tensor_args)
+        # w_eps = self.svg_filter.savgol_filter_torch(w_eps, window_size=9, polyorder=2, tensor_args=self.tensor_args)
 
         u += w_eps
 
@@ -232,12 +233,11 @@ class MPPI():
 
         self.vdes = self._qdot + self.u * self.dt
         self.qdes = self._q + self._qddot * self.dt + 0.5 * self.u * self.dt * self.dt
-        return self.qdes, self.vdes
+        return self.qdes, self.vdes, self.u
 
 
     def compute_weights(self, S: torch.Tensor, _lambda: float) -> torch.Tensor:
-        z = -S / _lambda
-        weights = torch.softmax(z, dim=0)  # (n_samples,)
+        weights = torch.softmax(-S / _lambda, dim=0)  # (n_samples,)
         return weights
     
 

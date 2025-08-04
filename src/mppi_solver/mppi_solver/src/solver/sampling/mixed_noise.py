@@ -105,10 +105,10 @@ class MixedSampling:
 
             # standard normal scaling
             elif sel == 'std_scaling':
-                base = n_split // 3
-                rem  = n_split - base * 3
-                splits = [base + (1 if i < rem else 0) for i in range(3)]
-                for r, ns in zip((0.75, 0.5, 0.25), splits):
+                base = n_split // 4
+                rem  = n_split - base * 4
+                splits = [base + (1 if i < rem else 0) for i in range(4)]
+                for r, ns in zip((0.8, 0.6, 0.4, 0.2), splits):
                     if ns == 0:
                         continue
                     std_noise = self.standard_normal.n_sample_ratio_sampling(ns, r)
@@ -116,10 +116,10 @@ class MixedSampling:
                     noise_list.append(std_noise)
 
             elif sel == 'std_constacc_scaling':
-                base = n_split // 3
-                rem  = n_split - base * 3
-                splits = [base + (1 if i < rem else 0) for i in range(3)]
-                for r, ns in zip((0.75, 0.5, 0.25), splits):
+                base = n_split // 4
+                rem  = n_split - base * 4
+                splits = [base + (1 if i < rem else 0) for i in range(4)]
+                for r, ns in zip((0.8, 0.6, 0.4, 0.2), splits):
                     if ns == 0:
                         continue
                     cv = self.standard_normal.n_sample_horizon_sampling(ns, 1).expand(-1, self.n_horizon, -1) * r

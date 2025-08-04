@@ -30,23 +30,14 @@ class PoseCost():
         ee_sample_pose = eefTraj[:,:-1,0:3,3]
         ee_sample_orientation = eefTraj[:,:-1,0:3,0:3]
 
-        target_pose_tensor = target_pose.pose.to(**self.tensor_args)
-        diff_pose = ee_sample_pose - target_pose_tensor
-
-        # ee_sample_quat = matrix_to_quaternion(ee_sample_orientation)
-        # q_target = target_pose.orientation.to(**self.tensor_args)
-        # q_target = q_target.view(1, 1, 4).expand_as(ee_sample_quat)
-        # ee_quat_inv = quaternion_invert(ee_sample_quat)
-        # q_diff = quaternion_multiply(q_target, ee_quat_inv) 
-        # diff_orientation = quaternion_to_axis_angle(q_diff)
-
-        target_pose_ori_mat = euler_angles_to_matrix(target_pose.rpy.to(**self.tensor_args), "ZYX")
-
-        diff_ori_mat = torch.matmul(torch.linalg.inv(ee_sample_orientation), target_pose_ori_mat)
-        diff_orientation = matrix_to_euler_angles(diff_ori_mat, "ZYX")
-
+        diff_pose = ee_sample_pose - target_pose.pose.to(**self.tensor_args)
         cost_pose = torch.norm(diff_pose, p=2, dim=-1, keepdim=False)
-        cost_orientation = torch.norm(diff_orientation, p=2, dim=-1, keepdim=False)
+
+        target_pose_quat = target_pose.orientation.to(**self.tensor_args)
+        diff_ori = matrix_to_quaternion(ee_sample_orientation) * target_pose_quat
+
+        cost_orientation = torch.norm(diff_ori, p=2, dim=-1, keepdim=False)
+        cost_orientation = (1.0 - torch.pow(cost_orientation, 2))
 
         stage_cost = self.stage_pose_weight * cost_pose + self.stage_orientation_weight * cost_orientation
         stage_cost = stage_cost * self.gamma_horizon_gpu
@@ -60,17 +51,16 @@ class PoseCost():
         ee_sample_orientation = eefTraj[:,-1,0:3,0:3].clone()
 
         diff_pose = ee_sample_pose - target_pose.pose.to(**self.tensor_args)
-        target_pose_ori_mat = euler_angles_to_matrix(target_pose.rpy.to(**self.tensor_args), "ZYX")
-
-        diff_ori_mat = torch.matmul(torch.linalg.inv(ee_sample_orientation), target_pose_ori_mat)
-        diff_orientation = matrix_to_euler_angles(diff_ori_mat, "ZYX")
-
         cost_pose = torch.norm(diff_pose, p=2, dim=-1, keepdim=False)
-        cost_orientation = torch.norm(diff_orientation, p=2, dim=-1, keepdim=False)
+
+        target_pose_quat = target_pose.orientation.to(**self.tensor_args)
+        diff_ori = matrix_to_quaternion(ee_sample_orientation) * target_pose_quat
+
+        cost_orientation = torch.norm(diff_ori, p=2, dim=-1, keepdim=False)
+        cost_orientation = (1.0 - torch.pow(cost_orientation, 2))
 
         terminal_cost = self.terminal_pose_weight * cost_pose + self.terminal_orientation_weight * cost_orientation
         terminal_cost = (self.gamma **self.n_horizon) * terminal_cost
-
         return terminal_cost
    
 
@@ -79,16 +69,13 @@ class PoseCost():
         ee_sample_orientation = eefTraj[:,0:3,0:3]
 
         diff_pose = ee_sample_pose - target_pose.pose.cpu()
-
-        # ee_sample_quat = matrix_to_quaternion(ee_sample_orientation)
-
-        # ee_quat_inv = quaternion_invert(ee_sample_quat)
-        # q_diff = quaternion_multiply(target_pose.orientation.cpu(), ee_quat_inv) 
-        # diff_orientation = quaternion_to_axis_angle(q_diff)
-        diff_orientation = matrix_to_euler_angles(ee_sample_orientation, "ZYX") - target_pose.rpy.cpu()
-
         cost_pose = torch.norm(diff_pose, p=2, dim=-1, keepdim=False)
-        cost_orientation = torch.norm(diff_orientation, p=2, dim=-1, keepdim=False)
+
+        target_pose_quat = target_pose.orientation.cpu()
+        diff_ori = matrix_to_quaternion(ee_sample_orientation) * target_pose_quat
+
+        cost_orientation = torch.norm(diff_ori, p=2, dim=-1, keepdim=False)
+        cost_orientation = (1.0 - torch.pow(cost_orientation, 2))
 
         stage_cost = self.stage_pose_weight * cost_pose + self.stage_orientation_weight * cost_orientation
         stage_cost = stage_cost * self.gamma_horizon_cpu
@@ -101,10 +88,13 @@ class PoseCost():
         ee_terminal_orientation = eefTraj[-1,0:3,0:3]
 
         diff_pose = ee_terminal_pose - target_pose.pose.cpu()
-        diff_orientation = matrix_to_euler_angles(ee_terminal_orientation, "ZYX") - target_pose.rpy.cpu()
-
         cost_pose = torch.norm(diff_pose, p=2, dim=-1, keepdim=False)
-        cost_orientation = torch.norm(diff_orientation, p=2, dim=-1, keepdim=False)
+
+        target_pose_quat = target_pose.orientation.cpu()
+        diff_ori = matrix_to_quaternion(ee_terminal_orientation) * target_pose_quat
+
+        cost_orientation = torch.norm(diff_ori, p=2, dim=-1, keepdim=False)
+        cost_orientation = (1.0 - torch.pow(cost_orientation, 2))
 
         terminal_cost = self.terminal_pose_weight * cost_pose + self.terminal_orientation_weight * cost_orientation
         terminal_cost = (self.gamma ** self.n_horizon) * terminal_cost
