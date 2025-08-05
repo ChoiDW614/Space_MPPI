@@ -22,7 +22,7 @@ from rclpy.qos import ReliabilityPolicy
 
 # ROS2 Messages
 from control_msgs.msg import DynamicJointState
-from geometry_msgs.msg import TransformStamped, PoseStamped, PoseArray
+from geometry_msgs.msg import TransformStamped, PoseStamped, PoseArray, Vector3, Quaternion
 from std_msgs.msg import Float64MultiArray, Bool
 from rosgraph_msgs.msg import Clock
 
@@ -92,14 +92,17 @@ class MppiSolverNode(Node):
         self.arm_topic = self.controller_name + '/commands'
 
         # Model state subscriber
-        subscribe_qos_profile = QoSProfile(depth=5, reliability=ReliabilityPolicy.BEST_EFFORT, durability=DurabilityPolicy.VOLATILE)
-        subscribe_qos_profile2 = QoSProfile(history=QoSHistoryPolicy.KEEP_ALL, reliability=ReliabilityPolicy.BEST_EFFORT, durability=DurabilityPolicy.VOLATILE)
+        self.subscribe_qos_profile = QoSProfile(depth=5, reliability=ReliabilityPolicy.BEST_EFFORT, durability=DurabilityPolicy.VOLATILE)
+        self.base_sub_qos_profile = QoSProfile(depth=100, reliability=ReliabilityPolicy.BEST_EFFORT, durability=DurabilityPolicy.VOLATILE)
+        self.target_sub_qos_profile = QoSProfile(depth=300, reliability=ReliabilityPolicy.BEST_EFFORT, durability=DurabilityPolicy.VOLATILE)
         
-        self.joint_state_subscriber = self.create_subscription(DynamicJointState, '/dynamic_joint_states', self.joint_state_callback, subscribe_qos_profile)
-        self.base_state_subscriber = self.create_subscription(TransformStamped, '/model/canadarm/pose', self.model_state_callback, subscribe_qos_profile2)
-        self.target_state_subscriber = self.create_subscription(TransformStamped, '/model/ets_vii/pose', self.target_state_callback, subscribe_qos_profile2)
-        self.sim_clock_subscriber = self.create_subscription(Clock, '/world/default/clock', self.sim_clock_callback, subscribe_qos_profile)
-        self.collision_target_subscriber = self.create_subscription(PoseArray, '/world/default/dynamic_pose/info', self.collision_target_callback, subscribe_qos_profile)
+        self.joint_state_subscriber = self.create_subscription(DynamicJointState, '/dynamic_joint_states', self.joint_state_callback, self.subscribe_qos_profile)
+        self.base_state_subscriber = self.create_subscription(TransformStamped, '/model/canadarm/pose', self.model_state_callback, self.base_sub_qos_profile)
+        self.target_state_subscriber = self.create_subscription(TransformStamped, '/model/ets_vii/pose', self.target_state_callback, self.target_sub_qos_profile)
+        self.sim_clock_subscriber = self.create_subscription(Clock, '/world/default/clock', self.sim_clock_callback, self.subscribe_qos_profile)
+        self.collision_target_subscriber = self.create_subscription(PoseArray, '/world/default/dynamic_pose/info', self.collision_target_callback, self.subscribe_qos_profile)
+
+        self.clear_sub_buffer_timer = self.create_timer(10.0, self.clear_sub_buffer_callback)
 
         # publisher
         cal_timer_period = params['ros2_node']['cal_timer_period'] 
@@ -149,21 +152,26 @@ class MppiSolverNode(Node):
             ctime = time.time()
             jointTraj, poseTraj = self.canadarmIK.get_ik_joint_trajectory2(ctime, oMi, self.canadarmWrapper.state.q.copy(), self.n_horizon, 0.01)
             self.controller.setReference(jointTraj, poseTraj)
+            self.controller.setstate_mass_nle(self.canadarmWrapper.state.M, self.canadarmWrapper.state.G)
 
-            torch.cuda.synchronize()
-            time1 = time.time()
+            # torch.cuda.synchronize()
+            # time1 = time.time()
 
             qdes, vdes, ades = self.controller.compute_control_input()
 
-            torch.cuda.synchronize()
-            time2 = time.time()
-            self._logger.info(f"time: {time2 - time1}")
+            # torch.cuda.synchronize()
+            # time2 = time.time()
+            # self._logger.info(f"time: {time2 - time1}")
 
             self.qdes = qdes.clone().cpu().numpy()
             self.vdes = vdes.clone().cpu().numpy()
             self.ades = ades.clone().cpu().numpy()
         else: 
             self.controller.warm_up()
+            # self._logger.info(f"is_target: {self.is_target}")
+            # self._logger.info(f"init_jointCB: {self.init_jointCB}")
+            # self._logger.info(f"sim time: {self.sim_time.time}")
+            # self._logger.info(f"ros2 connect: {self.is_sim_ros2_connected}")
         return
 
 
@@ -180,12 +188,9 @@ class MppiSolverNode(Node):
             #     if isinstance(x, float) and math.isnan(x):
             #         self.arm_msg.data[i] = 0.0
 
-            # u = self.canadarmWrapper.state.M @ self.ades + self.canadarmWrapper.state.G
-
             u = self.canadarmWrapper.state.M @ self.ades + self.canadarmWrapper.state.G
             for i in range(0,7):
                 self.arm_msg.data.append(u[i])
-
             for i, x in enumerate(self.arm_msg.data):
                 if isinstance(x, float) and math.isnan(x):
                     self.arm_msg.data[i] = 0.0
@@ -216,7 +221,7 @@ class MppiSolverNode(Node):
         return
     
 
-    def target_state_callback(self, msg):
+    def target_state_callback(self, msg: TransformStamped):
         if not self.is_sim_ros2_connected:
             if msg.child_frame_id == 'ets_vii':
                 self.docking_interface.set_true_docking_pose(msg)
@@ -248,7 +253,7 @@ class MppiSolverNode(Node):
                 self.is_target = True
         return
     
-    def model_state_callback(self, msg):
+    def model_state_callback(self, msg: TransformStamped):
         if msg.header.frame_id == "default":
             if msg.child_frame_id == "canadarm":
                 self.controller.set_base_pose(msg.transform.translation, msg.transform.rotation)
@@ -271,6 +276,16 @@ class MppiSolverNode(Node):
             self.collision_targets = self.collision_positions[self.collision_target_indices]
             self.controller.set_collision_target(self.collision_targets)
         return
+    
+    def clear_sub_buffer_callback(self):
+        self.destroy_subscription(self.base_state_subscriber)
+        self.base_state_subscriber = self.create_subscription(TransformStamped,
+                                        '/model/canadarm/pose', self.model_state_callback, self.base_sub_qos_profile)
+        
+        self.destroy_subscription(self.target_state_subscriber)
+        self.target_state_subscriber = self.create_subscription(TransformStamped,
+                                        '/model/ets_vii/pose', self.target_state_callback, self.target_sub_qos_profile)
+
 
 
 def main():

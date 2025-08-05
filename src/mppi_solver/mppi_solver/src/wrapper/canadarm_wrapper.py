@@ -73,7 +73,6 @@ class CanadarmWrapper(RobotWrapper):
         self.tmp = pin.SE3()
 
 
-
     def computeAllTerms(self):
         pin.computeAllTerms(self.model, self.data, self.state.q, self.state.v)
         self.computeJointJacobians(self.state.q)
@@ -84,6 +83,7 @@ class CanadarmWrapper(RobotWrapper):
         Adj_mat = self.computeAdjMat(self.eef_to_tip)
         self.state.J = self.getJointJacobian(self.state.id)
         self.tmp = self.data.oMi[self.index("Base_Joint")]
+
 
     def computeAdjMat(self, aTb : pin.SE3):
         rot = aTb.rotation

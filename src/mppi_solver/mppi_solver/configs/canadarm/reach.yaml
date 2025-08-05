@@ -43,7 +43,7 @@ cost:
     tracking_weight: 3.0
   
   collision:
-    weight: 10.0
+    weight: 1000.0
     softcap: 0.6
 
   stop:
@@ -51,8 +51,8 @@ cost:
     v_max: [ 0.0698132, 0.0698132, 0.0698132, 0.0698132, 0.0698132, 0.0698132, 0.0698132 ]
 
   end_effector:
-    weight: 2.0
-    distance_limit: 1.0
+    weight: 1.0
+    distance_limit: 1.5
 
   reference:
     weight: 0.45
@@ -63,7 +63,7 @@ cost:
 sample:
   selection: ['std', 'sobol', 'std_scaling', 'std_constacc_scaling', 'std_constacc', 'sobol_constacc']
   # selection_weights: [ 0.25, 0.0, 0.25, 0.25, 0.25, 0.0 ]
-  selection_weights: [ 0.0, 0.0, 0.0, 0.5, 0.5, 0.0 ]
+  selection_weights: [ 0.1, 0.1, 0.2, 0.4, 0.2, 0.0 ]
   sigma_scale: 3.0
   kappa: 0.005
   sigma_update: true

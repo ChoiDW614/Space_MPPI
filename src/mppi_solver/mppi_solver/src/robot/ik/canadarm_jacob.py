@@ -71,11 +71,16 @@ class CanadarmJacob(nn.Module):
         self.J_tw_mass_mask = (self.lower_tri_mask * self.mass_list.view(7,1)).view(1, 1, self.n_mani_dof, self.n_mani_dof, 1)
         self.lower_tri_mask = self.lower_tri_mask.view(1, 1, 7, 7, 1)
         self.cross_eps = torch.tensor([[[0,0,0],[0,0,1],[0,-1,0]], [[0,0,-1],[0,0,0],[1,0,0]],[[0,1,0],[-1,0,0],[0,0,0]]], **self.tensor_args)
+        self.H_star_eps = 1e-6 * torch.eye(self.n_action, **self.tensor_args)
+        eigvals, eigvecs = torch.linalg.eigh(self.inertial_list)
+        sqrt_eigs = torch.sqrt(torch.clamp(eigvals, min=0.0))
+        self.I_half = eigvecs @ torch.diag_embed(sqrt_eigs) @ eigvecs.transpose(-1,-2)
+        self.mass_sqrt = torch.sqrt(self.mass_list).view(1,1,1,-1)
 
 
     def forward(self, com_list: torch.Tensor, link_pose_list: torch.Tensor, jabobian: torch.Tensor = None, bm: bool = False) -> torch.Tensor:
         if bm:
-            return self.compute_jacob_bm(com_list, link_pose_list, jabobian)
+            return self.compute_jacob_bm2(com_list, link_pose_list, jabobian)
         else:
             return self.compute_jacobian(link_pose_list)
 
@@ -178,42 +183,83 @@ class CanadarmJacob(nn.Module):
         return jacob_bm
     
 
-    def compute_jacob_bm_v2(self, com_list, link_pose_list, jacobian):
-        n_samples, n_timesteps, _, _ = com_list.shape
-
-        J_tw = torch.zeros((n_samples, n_timesteps, 3, 7)).to(**self.tensor_args)
-        J_ri = torch.zeros((n_samples, n_timesteps, 3, 7)).to(**self.tensor_args)
-        H_w = torch.zeros((n_samples, n_timesteps, 3, 3)).to(**self.tensor_args)
-        H_w_phi = torch.zeros((n_samples, n_timesteps, 3, 7)).to(**self.tensor_args)
-
+    def compute_jacob_bm2(self, com_list: torch.Tensor, link_pose_list: torch.Tensor, jacobian: torch.Tensor) -> torch.Tensor:
+        n_samples, n_horizon, _, _ = com_list.shape
+        # com_list:       [s, h, 3, 7]
+        # link_pose_list: [s, h, 4, 4, 8]
+        # jacobian:       [s, h, 6, 7]
+        # J_ri:           [s, h, 3, 7]
         system_com = self.compute_system_com(com_list)
-        r_og  = system_com - self.base_com_pose.view(1,1,-1)
-        skew_r_og = self.make_skew_mat(r_og)
+        r_og = system_com - self.base_com_pose.view(1, 1, -1)                           # [s, h, 3]
+        r_og_skew = self.make_skew_mat(r_og).contiguous()                               # [s, h, 3, 3]
 
-        for i in range(7):
-            J_ti = torch.zeros((n_samples, n_timesteps, 3, 7)).to(**self.tensor_args)
-            J_ri[:,:,:,:i+1] = jacobian[:,:,:3,:i+1]
-            for j in range(i+1):
-                J_ti[:,:,:,j] = torch.cross(J_ri[:,:,:,j], com_list[...,i].clone()-link_pose_list[:,:,:3,3,i].clone(), dim=-1)
-            J_tw += J_ti.clone() * self.mass_list[i]
-            r_oi = com_list[...,i].clone() - self.base_com_pose.clone()
-            skew_r_oi = self.make_skew_mat(r_oi)
-            H_w += self.inertial_list[i,:,:].view(1,1,3,3) + self.mass_list[i] * torch.matmul(skew_r_og.transpose(-1,2), skew_r_og)
-            H_w_phi += torch.matmul(self.inertial_list[i,:,:].view(1,1,3,3), J_ri) + self.mass_list[i] * torch.matmul(skew_r_oi, J_ti)
-        H_w += self.I_0
+        J_ri = jacobian[:,:,:3,:]                                                       # [s, h, 3, 7]
+        rp_i = com_list - link_pose_list[..., :3, 3, :self.n_mani_dof]                  # [s, h, 3, 7]
 
-        H_s = self.total_mass * torch.matmul(skew_r_og, skew_r_og) + H_w
-        H_theta = H_w_phi - torch.matmul(skew_r_og, J_tw)
+        J_ri = J_ri.permute(0,1,3,2).unsqueeze(2).expand(-1, -1, 7, -1, -1)
+        rp_i = rp_i.permute(0,1,3,2).unsqueeze(3).expand(-1, -1, -1, 7, -1)
 
-        H_s_inv = torch.linalg.pinv(H_s)
+        cross_all = torch.cross(J_ri, rp_i, dim=-1)                                     # [s, h, 7, 7, 3]
+        J_tw = torch.sum(cross_all * self.J_tw_mass_mask, dim=2).permute(0, 1, 3, 2).contiguous() # [s, h, 3, 7]
 
-        jacob_bm = torch.zeros((n_samples, n_timesteps, 6, 7)).to(**self.tensor_args)
-        jacob_bm[:,:,:3,:] = -(J_tw/self.total_mass + torch.matmul(torch.matmul(skew_r_og, H_s_inv), H_theta))
+        r_og_skew_mul = self.make_skew_mul_mat(r_og)                                    # [s, h, 3, 3]
+        H_w = self.I_sum.view(1, 1, 3, 3) + self.mass_list_sum * r_og_skew_mul + self.I_0
+
+        r_oi = com_list - self.base_com_pose.view(1, 1, 3, 1)                           # [s, h, 3, 7]
+        skew_r_oi = self.make_skew_mat(r_oi.permute(0,1,3,2))                           # [s, h, 7, 3, 3]
+
+        masked_Jri   = J_ri * self.lower_tri_mask                                       # [s, h, 7, 7, 3]
+        J_ti_mass    = cross_all * self.J_tw_mass_mask                                  # [s, h, 7, 7, 3]
+
+        H_w_phi_1 = torch.einsum('iad,btijd->btaj', self.inertial_list, masked_Jri)
+        H_w_phi_2 = torch.einsum('btiac,btijc->btaj', skew_r_oi, J_ti_mass)
+
+        H_w_phi = H_w_phi_1 + H_w_phi_2
+
+        H_theta = H_w_phi - torch.einsum('btij,btjk->btik', r_og_skew, J_tw)
+
+        H_s = self.total_mass * torch.matmul(r_og_skew, r_og_skew) + H_w
+        H_s_inv = self.invert_3x3(H_s)
+
+        jacob_bm = torch.zeros((n_samples, n_horizon, 6, 7), **self.tensor_args)
+        jacob_bm[:,:,:3,:] = -(J_tw / self.total_mass + torch.matmul(torch.matmul(r_og_skew, H_s_inv), H_theta))
         jacob_bm[:,:,3:,:] = - torch.matmul(H_s_inv, H_theta)
 
-        # self.logger.info(f"diff: {torch.norm(jacob_bm2 - jacob_bm, p='fro')}")
+        # --------------------------------------------------
+        Hbm = torch.cat([J_tw, H_w_phi], dim=2)
+
+        Hb = torch.zeros((n_samples, n_horizon, 6, 6), **self.tensor_args)
+        Hb[:, :, :3, :3] = self.total_mass * torch.eye(3, **self.tensor_args)
+        Hb[:, :, :3, 3:] = -self.total_mass * r_og_skew
+        Hb[:, :, 3:, :3] = self.total_mass * r_og_skew
+        Hb[:, :, 3:, 3:] = H_w
+
+        Jw = jacobian[:,:,3:,:]
+        Jt = jacobian[:,:,:3,:]
+
+        Jw_ph = Jw.permute(0,1,3,2)
+
+        Jw_w = torch.einsum('bhik, ikj -> bhij', Jw_ph, self.I_half)
+        Hm_rot = torch.einsum('bhia, bhka -> bhik', Jw_w, Jw_w) 
+
+        Jt = Jt * self.mass_sqrt
+        Hm_trans = torch.einsum('bhia,bhik->bhak', Jt, Jt)
+        Hm = Hm_rot + Hm_trans
+
+        Hb_inv = torch.linalg.pinv(Hb)
+        alpha = 0.3
+        Hbm_scaled = alpha * Hbm
+        H_star = Hm - torch.einsum('bhji,bhjk,bhkl->bhil', Hbm_scaled, Hb_inv, Hbm_scaled)
+
+        H_star = self.project_to_psd(H_star)
+
+        # C = torch.einsum('bhji,bhjk,bhkl->bhil', Hbm_scaled, Hb_inv, Hbm_scaled)
+        # norm_Hm      = torch.linalg.norm(Hm,      ord=2, dim=(-2,-1))  # [s,h]
+        # norm_C       = torch.linalg.norm(C,       ord=2, dim=(-2,-1))  # [s,h]
+        # ratio = norm_C / (norm_Hm + 1e-12)                              # [s,h]
+        # self.logger.info(f"coupling/Hm ratio: {ratio[0].mean():.3f}")
         
-        return jacob_bm
+        return jacob_bm, H_star
 
 
     def make_skew_mat(self, p):
@@ -324,3 +370,43 @@ class CanadarmJacob(nn.Module):
         r_com += self.base_com_pose.view(1,1,-1) * ((100000.0 + 243.66))
         
         return r_com / self.total_mass
+    
+
+    def project_to_psd(self, H: torch.Tensor, tol: float = 1e-9) -> torch.Tensor:
+        Hsym = 0.5*(H + H.transpose(-2,-1))
+        eig, vec = torch.linalg.eigh(Hsym)
+        eig_clamped = torch.clamp(eig, min=tol)
+        return vec @ torch.diag_embed(eig_clamped) @ vec.transpose(-1, -2)
+
+
+
+def is_psd(A: torch.Tensor, tol: float = 1e-8) -> torch.BoolTensor:
+    """
+    Check if each matrix A[..., i, j] is symmetric and PSD.
+
+    Args:
+      A   : Tensor of shape (..., N, N)
+      tol : numerical tolerance
+
+    Returns:
+      Tensor of shape (...) of bools
+    """
+    # 1) symmetry: |A - A^T| <= tol everywhere
+    diff = torch.abs(A - A.transpose(-1, -2))
+    # all entries must be <= tol
+    symm = diff.le(tol).all(dim=(-2, -1))
+    # print("symm")
+    # print(symm)
+
+    # 2) eigenvalues of symmetric matrix
+    #    use eigvalsh for real-symmetric
+    eigs = torch.linalg.eigvalsh(A)  # shape (..., N)
+    # smallest eigenvalue
+    min_eig = eigs[..., 0]
+
+    # print("min_eig")
+    # print((min_eig >= -tol))
+
+    # 3) PSD if symmetric AND min_eig >= -tol
+    return symm & (min_eig >= -tol)
+

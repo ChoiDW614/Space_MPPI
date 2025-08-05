@@ -29,6 +29,7 @@ class ReferenceCost:
     def compute_prev_reference_cost(self, ee_joint: torch.Tensor, pose_trajectories:torch.Tensor):
         pose_trajectories = pose_trajectories.to(**self.tensor_args)
         reference_diff = ee_joint.squeeze(0) - pose_trajectories
+
         cost_reference = self.reference_weight * torch.norm(reference_diff, p='fro', dim=(1, 2))
 
         cost_reference = cost_reference * self.gamma_horizon_gpu
