@@ -38,8 +38,8 @@ class StandardSampling:
 
 
     def sampling(self):
-        standard_normal_noise = torch.randn(self.n_sample, self.n_horizon, self.n_action, **self.tensor_args)
-        # standard_normal_noise = torch.randn(self.n_sample, 1, self.n_action, **self.tensor_args).repeat(1, self.n_horizon, 1)
+        # standard_normal_noise = torch.randn(self.n_sample, self.n_horizon, self.n_action, **self.tensor_args)
+        standard_normal_noise = torch.randn(self.n_sample, 1, self.n_action, **self.tensor_args).repeat(1, self.n_horizon, 1)
         self.sigma_matrix = self.sigma.expand(self.n_sample, self.n_horizon, -1, -1)
         noise = torch.matmul(standard_normal_noise.unsqueeze(-2), self.sigma_matrix).squeeze(-2)
         return noise
