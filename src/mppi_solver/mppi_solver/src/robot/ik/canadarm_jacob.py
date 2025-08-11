@@ -81,6 +81,8 @@ class CanadarmJacob(nn.Module):
     def forward(self, com_list: torch.Tensor, link_pose_list: torch.Tensor, jabobian: torch.Tensor = None, bm: bool = False) -> torch.Tensor:
         if bm:
             return self.compute_jacob_bm2(com_list, link_pose_list, jabobian)
+            # return self.compute_jacob_bm(com_list, link_pose_list, jabobian)
+
         else:
             return self.compute_jacobian(link_pose_list)
 

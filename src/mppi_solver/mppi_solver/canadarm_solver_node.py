@@ -139,19 +139,19 @@ class MppiSolverNode(Node):
 
     def cal_timer_callback(self):
         if self.is_target and self.init_jointCB and (self.sim_time.time > 10.0):
-            if self.is_init_trajectory:
-                targetSE3 = self.targetSE3 * self.canadarmWrapper.eef_to_tip.inverse()
-                stime = time.time()
-                init_oMi = deepcopy(self.canadarmWrapper.iss_to_base * self.canadarmWrapper.state.oMi * self.canadarmWrapper.eef_to_tip)
-                self.canadarmIK.init_ik_trajectory(5.0, stime, init_oMi, targetSE3)
-                # self.tmp = self.canadarmIK.get_ik_joint_trajectory(stime, init_oMi,self.canadarmWrapper.state.q.copy(), self.n_horizon, 0.01)
-                self.is_init_trajectory = False
+            # if self.is_init_trajectory:
+            #     targetSE3 = self.targetSE3 * self.canadarmWrapper.eef_to_tip.inverse()
+            #     stime = time.time()
+            #     init_oMi = deepcopy(self.canadarmWrapper.iss_to_base * self.canadarmWrapper.state.oMi * self.canadarmWrapper.eef_to_tip)
+            #     self.canadarmIK.init_ik_trajectory(5.0, stime, init_oMi, targetSE3)
+            #     # self.tmp = self.canadarmIK.get_ik_joint_trajectory(stime, init_oMi,self.canadarmWrapper.state.q.copy(), self.n_horizon, 0.01)
+            #     self.is_init_trajectory = False
 
-            self.canadarmIK.targetUpdate(self.targetSE3 * self.canadarmWrapper.eef_to_tip.inverse())
-            oMi = self.canadarmWrapper.iss_to_base * self.canadarmWrapper.state.oMi
-            ctime = time.time()
-            jointTraj, poseTraj = self.canadarmIK.get_ik_joint_trajectory2(ctime, oMi, self.canadarmWrapper.state.q.copy(), self.n_horizon, 0.01)
-            self.controller.setReference(jointTraj, poseTraj)
+            # self.canadarmIK.targetUpdate(self.targetSE3 * self.canadarmWrapper.eef_to_tip.inverse())
+            # oMi = self.canadarmWrapper.iss_to_base * self.canadarmWrapper.state.oMi
+            # ctime = time.time()
+            # jointTraj, poseTraj = self.canadarmIK.get_ik_joint_trajectory2(ctime, oMi, self.canadarmWrapper.state.q.copy(), self.n_horizon, 0.01)
+            # self.controller.setReference(jointTraj, poseTraj)
             self.controller.setstate_mass_nle(self.canadarmWrapper.state.M, self.canadarmWrapper.state.G)
 
             # torch.cuda.synchronize()

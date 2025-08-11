@@ -42,6 +42,6 @@ class EECost:
 
             cost_ee = torch.sum(cost_ee, dim=0)
         else:
-            cost_ee = torch.zeros((vSample.shape[0]), **self.tensor_args)
+            cost_ee = torch.zeros((0), **self.tensor_args)
 
         return cost_ee

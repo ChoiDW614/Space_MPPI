@@ -9,8 +9,8 @@ from mppi_solver.src.solver.cost.stop_cost import StopCost
 from mppi_solver.src.solver.cost.ee_cost import EECost
 from mppi_solver.src.solver.cost.reference_cost import ReferenceCost
 from mppi_solver.src.solver.cost.base_disturbance_cost import BaseDisturbanceCost
+from mppi_solver.src.solver.cost.velocity_cost import CostVelZero
 from mppi_solver.src.solver.cost.energy_cost import EnergyCost
-
 from mppi_solver.src.utils.pose import Pose
 
 from rclpy.logging import get_logger
@@ -38,7 +38,7 @@ class CostManager:
         self.stop_weights = params['cost']['stop']                          # Stop Cost Weights
         self.ee_weights = params['cost']['end_effector']                    # End-effector Cost Weights
         self.reference_weights = params['cost']['reference']                # Reference Cost Weights
-        self.base_disturbance_weights = params['cost']['base_disturbance']  # Base Disturbance Cost Weights
+        self.base_disturbance_weights = params['cost']['base_disturbance']  # Reference Cost Weights
         self.energy_weights = params['cost']['energy']                      # Energy Cost Weights
 
         # Cost Library
@@ -80,9 +80,9 @@ class CostManager:
         # For Base Disturbance Cost
         self.jacob_bm : torch.Tensor
 
-        # For Energy Cost
-        self.torque : torch.Tensor
-        self.H_star : torch.Tensor
+        # Chan
+        self.vel_cost = CostVelZero()
+
 
 
     def update_pose_cost(self, qSamples: torch.Tensor, uSamples: torch.Tensor, vSamples: torch.Tensor, 
@@ -92,50 +92,124 @@ class CostManager:
         self.uSamples = uSamples.clone()
         self.vSamples = vSamples.clone()
         self.eef_trajectories = eef_trajectories.clone()
-        self.joint_trajectories = joint_trajectories.clone()
-        self.pose_trajectories = pose_trajectories.clone()
+        # self.joint_trajectories = joint_trajectories.clone()
+        # self.pose_trajectories = pose_trajectories.clone()
+
 
     def update_covar_cost(self, u: torch.Tensor, v: torch.Tensor, sigma_matrix: torch.Tensor):
         self.u = u.clone()
         self.v = v.clone()
         self.sigma_matrix = sigma_matrix.clone()
 
+
     def update_base_cost(self, base_pose: Pose, q: torch.Tensor):
         self.base_pose = base_pose
         self.test_joint = q
 
+
     def update_collision_cost(self, collision_target: torch.Tensor):
         self.collision_target = collision_target.clone()
+
 
     def update_ee_cost(self, jacobian: torch.Tensor, target_dist: torch.Tensor):
         self.jacobian = jacobian.clone()
         self.target_dist = target_dist.clone()
 
+
     def update_reference_cost(self, link_list: torch.Tensor):
         self.link_list = link_list.clone()
 
-    def update_base_disturbance_cost(self, jacobian_bm: torch.Tensor):
+
+    def update_base_disturbance_cost(self, jacobian_bm : torch.Tensor):
         self.jacob_bm = jacobian_bm.clone()
+
+
+    def update_weights(self, target_dist):
+        # Fixed Base
+        # if target_dist > 0.5:
+        #     # Pose Cost
+        #     self.pose_cost.stage_pose_weight = 100.0
+        #     self.pose_cost.stage_orientation_weight = 100.0
+        #     self.pose_cost.terminal_pose_weight = 1000.0
+        #     self.pose_cost.terminal_orientation_weight = 1000.0
+
+        #     # Vel Cost
+        #     self.vel_cost.w_running = 5.0
+        #     self.vel_cost.w_terminal = 100.0
+
+        # elif target_dist < 0.5:
+        #     # Pose Cost
+        #     self.pose_cost.stage_pose_weight = 100.0
+        #     self.pose_cost.stage_orientation_weight = 1000.0
+        #     self.pose_cost.terminal_pose_weight = 1000.0
+        #     self.pose_cost.terminal_orientation_weight = 10000.0
+
+        #     # Vel Cost
+        #     self.vel_cost.w_running = 60.0
+        #     self.vel_cost.w_terminal = 300.0
+
+
+        # Floating Base
+        if target_dist > 0.5:
+            # Pose Cost
+            self.pose_cost.stage_pose_weight = 100.0
+            self.pose_cost.stage_orientation_weight = 1000.0
+            self.pose_cost.terminal_pose_weight = 1000.0
+            self.pose_cost.terminal_orientation_weight = 10000.0
+
+            # Vel Cost
+            self.vel_cost.w_running = 5.0
+            self.vel_cost.w_terminal = 100.0
+
+        elif target_dist < 0.5:
+            # Pose Cost
+            self.pose_cost.stage_pose_weight = 300.0
+            self.pose_cost.stage_orientation_weight = 2000.0
+            self.pose_cost.terminal_pose_weight = 1000.0
+            self.pose_cost.terminal_orientation_weight = 10000.0
+
+            # Vel Cost
+            self.vel_cost.w_running = 40.0
+            self.vel_cost.w_terminal = 200.0
+
+
+
+
 
     def update_energy_cost(self, torque: torch.Tensor, H_star: torch.Tensor):
         self.torque = torque.clone()
         self.H_star = H_star.clone()
 
-    
+
+
     def compute_all_cost(self):
         S = torch.zeros((self.n_sample), **self.tensor_args)
 
-        S += self.pose_cost.compute_stage_cost(self.eef_trajectories, self.target)
-        S += self.pose_cost.compute_terminal_cost(self.eef_trajectories, self.target)
+        # S += self.pose_cost.compute_stage_cost(self.eef_trajectories, self.target)
+        # S += self.pose_cost.compute_terminal_cost(self.eef_trajectories, self.target)
+        # S += self.pose_cost.compute(self.eef_trajectories, self.target.tf_matrix(self.tensor_args))
+        # S += self.vel_cost.compute(self.vSamples.to(**self.tensor_args))
         # S += self.covar_cost.compute_covar_cost(self.sigma_matrix, self.u, self.v)
         # S += self.joint_cost.compute_centering_cost(self.qSamples)
         # S += self.joint_cost.compute_jointTraj_cost(self.qSamples, self.joint_trajectories)
-        S += self.action_cost.compute_action_cost(self.uSamples)
-        S += self.collision_cost.compute_collision_cost(self.base_pose, self.qSamples, self.collision_target)
-        S += self.stop_cost.compute_stop_cost(self.vSamples)
-        S += self.ee_cost.compute_ee_cost(self.vSamples, self.jacobian, self.target_dist)
+        # S += self.action_cost.compute_action_cost(self.uSamples)
+        # S += self.collision_cost.compute_collision_cost(self.base_pose, self.qSamples, self.collision_target)
+        # S += self.stop_cost.compute_stop_cost(self.vSamples)
+        # S += self.ee_cost.compute_ee_cost(self.vSamples, self.jacobian, self.target_dist)
         # S += self.reference_cost.compute_reference_cost(self.link_list, self.pose_trajectories)
         # S += self.disturbace_cost.compute_base_disturbance_cost(self.jacob_bm, self.vSamples)
-        S += self.energy_cost.compute_energy_cost(self.torque, self.vSamples, self.H_star)
+
+
+        # Chan Cost
+        S += self.pose_cost.compute(self.eef_trajectories, self.target.tf_matrix(self.tensor_args))
+        S += self.vel_cost.compute(self.vSamples.to(**self.tensor_args))
+        S += self.vel_cost.compute_vel_penalty(self.vSamples.to(**self.tensor_args))
+        S += self.covar_cost.compute(self.u, self.sigma_matrix)
+        S += self.disturbace_cost.compute_base_disturbance_cost(self.jacob_bm, self.vSamples)
+
+        # Chan Log
+        # self.logger.info(f"Sigma Matrix : {self.sigma_matrix.shape}")
+        # self.logger.info(f"vSamples : {self.vSamples}")
+        
         return S
     
