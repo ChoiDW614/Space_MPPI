@@ -82,7 +82,9 @@ class MppiControllerNode(Node):
                 # qddot_des = 40 * (qdes - self.canadarmWrapper.state.q)  + 4 * (vdes - self.canadarmWrapper.state.v)
                 # qddot_des = u.clone().cpu().numpy()
                 target_joint = np.array(self.target_joint)
+                # ades = target_joint[:7]
                 qddot_des = 400 * (target_joint[:7] - self.canadarmWrapper.state.q) + 40 * (target_joint[7:] - self.canadarmWrapper.state.v)
+                
                 u = self.canadarmWrapper.state.M @ qddot_des + self.canadarmWrapper.state.G
                 self.arm_msg.data = u.tolist()
         return

@@ -75,16 +75,20 @@ class CostManager:
     def compute_all_cost(self):
         S = torch.zeros((self.n_sample), device = self.device)
 
-        S += self.pose_cost.compute_stage_cost(self.eef_trajectories, self.target)
-        S += self.pose_cost.compute_terminal_cost(self.eef_trajectories, self.target)
+        # S += self.pose_cost.compute_stage_cost(self.eef_trajectories, self.target)
+        # S += self.pose_cost.compute_terminal_cost(self.eef_trajectories, self.target)
         # S += self.covar_cost.compute_covar_cost(self.sigma_matrix, self.u, self.v)
         # S += self.joint_cost.compute_centering_cost(self.qSamples)
-        S += self.joint_cost.compute_jointTraj_cost(self.qSamples, self.joint_trajectories)
-        S += self.action_cost.compute_action_cost(self.uSamples)
+        # S += self.joint_cost.compute_jointTraj_cost(self.qSamples, self.joint_trajectories)
+        # S += self.action_cost.compute_action_cost(self.uSamples)
 
-        self.collision_cost.comput_
+        # self.collision_cost.comput_
 
         # self.disturbace_cost.compute_base_disturbance_cost(self.base_pose, self.test_joint, None, None)
+
+        # chan
+        S += self.pose_cost.compute(self.eef_trajectories, self.target.tf_matrix().to(self.device))
+
 
         return S
     

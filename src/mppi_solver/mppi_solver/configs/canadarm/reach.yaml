@@ -7,7 +7,7 @@ mppi:
   urdf_name: "SSRMS_Canadarm2_w_iss.urdf"
   controller_name: "/canadarm_joint_controller"
   horizon: 32
-  sample: 1000
+  sample: 500
   action: 7
   dt: 0.01
   free_floating: False
@@ -38,7 +38,7 @@ cost:
     tracking_weight: 0.05
 
 sample:
-  sigma_scale: 1.0
+  sigma_scale: 0.5
   kappa: 0.005
   sigma_update: true
   sigma_update_type: "CMA_ES"

@@ -93,3 +93,52 @@ class PoseCost():
 
         return terminal_cost
     
+
+    def compute(self,T, goal):
+        pos_ee = T[..., :3, 3] # B,T,3
+        pos_goal = goal[:3, 3]  # 3,
+        pos_diff = pos_ee - pos_goal.unsqueeze(0).unsqueeze(0) # B,T,3
+        pos_cost = (pos_diff ** 2).sum(dim=-1) # B.T
+
+
+
+        R_ee = T[..., :3, :3] # B,T,3,3
+        R_goal = goal[:3, :3].expand_as(R_ee)
+
+        q_ee = self.rotmat_to_quat(R_ee)
+        q_goal = self.rotmat_to_quat(R_goal)
+
+        q_ee = q_ee / (q_ee.norm(dim=-1, keepdim=True) + 1e-8)
+        q_goal = q_goal / (q_goal.norm(dim=-1, keepdim=True) + 1e-8)
+        dot = torch.sum(q_ee * q_goal, dim=-1)
+        rot_cost = (1.0 - dot**2) # B,T
+
+        running_pos_cost = pos_cost[:, :-1] * self.stage_pose_weight
+        running_rot_cost = rot_cost[:, :-1] * self.stage_orientation_weight
+
+        terminal_pos_cost = pos_cost[:, -1] * self.terminal_pose_weight
+        terminal_rot_cost = rot_cost[:, -1] * self.terminal_orientation_weight
+
+        cost = running_pos_cost.sum(dim=-1) + running_rot_cost.sum(dim=-1) + terminal_pos_cost + terminal_rot_cost  # (B,)
+        return cost
+
+    def rotmat_to_quat(self, R):
+
+        m00 = R[..., 0, 0]
+        m01 = R[..., 0, 1]
+        m02 = R[..., 0, 2]
+        m10 = R[..., 1, 0]
+        m11 = R[..., 1, 1]
+        m12 = R[..., 1, 2]
+        m20 = R[..., 2, 0]
+        m21 = R[..., 2, 1]
+        m22 = R[..., 2, 2]
+
+        trace = m00 + m11 + m22
+        qw = 0.5 * torch.sqrt(torch.clamp(trace + 1.0, min=1e-6))
+        qx = 0.5 * torch.sign(m21 - m12) * torch.sqrt(torch.clamp(1.0 + m00 - m11 - m22, min=1e-6))
+        qy = 0.5 * torch.sign(m02 - m20) * torch.sqrt(torch.clamp(1.0 - m00 + m11 - m22, min=1e-6))
+        qz = 0.5 * torch.sign(m10 - m01) * torch.sqrt(torch.clamp(1.0 - m00 - m11 + m22, min=1e-6))
+
+        q = torch.stack([qx, qy, qz, qw], dim=-1)  # (..., 4)
+        return q

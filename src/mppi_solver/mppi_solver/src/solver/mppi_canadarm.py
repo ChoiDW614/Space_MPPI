@@ -153,7 +153,7 @@ class MPPI():
         diff_ori_quat = matrix_to_quaternion(diff_ori_mat)
         self.diff_ori_3d = matrix_to_euler_angles(diff_ori_mat, "ZYX")
 
-        # self.logger.info(f"Pose Err : {pose_err}")
+        self.logger.info(f"Pose Err : {pose_err}")
         # self.logger.info(f"Ori Err : {self.diff_ori_3d}")
 
         if pose_err < 0.005:
@@ -164,7 +164,7 @@ class MPPI():
 
     def compute_control_input(self):
         if self.check_reach():
-            return self.qdes, self.vdes
+            return self.qdes, self.vdes, self.u
         
         self.MATLAB_log()
         
@@ -190,7 +190,7 @@ class MPPI():
 
         u += w_eps
 
-        self.sample_gen.update_distribution(u, v, w, noise)
+        # self.sample_gen.update_distribution(u, v, w, noise)
 
         self.u_prev = u.clone()
         self.u = u[0].clone()
@@ -199,7 +199,7 @@ class MPPI():
         self.vdes = self._qdot + self.u * self.dt
         self.qdes = self._q + self._qddot * self.dt + 0.5 * self.u * self.dt * self.dt
 
-        return self.qdes, self.vdes
+        return self.qdes, self.vdes, self.u
 
 
     def compute_weights(self, S: torch.Tensor, _lambda: float) -> torch.Tensor:

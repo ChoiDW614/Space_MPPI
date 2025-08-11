@@ -74,6 +74,8 @@ class MppiSolverNode(Node):
         self.interface_values = None
         self.qdes = np.zeros(7)
         self.vdes = np.zeros(7)
+        self.ades = np.zeros(7)
+
 
         # Controller
         self.controller = MPPI(params)
@@ -143,9 +145,10 @@ class MppiSolverNode(Node):
             ctime = time.time()
             jointTraj = self.canadarmIK.get_ik_joint_trajectory(ctime, oMi, self.canadarmWrapper.state.q.copy(), 32, 0.01)
             self.controller.setReference(jointTraj)
-            qdes, vdes = self.controller.compute_control_input()
+            qdes, vdes, ades = self.controller.compute_control_input()
             self.qdes = qdes.clone().cpu().numpy()
             self.vdes = vdes.clone().cpu().numpy()
+            self.ades = ades.clone().cpu().numpy()
             # self._logger.info(f"joint_skew    : {self.canadarmWrapper.state.J}")
             # self._logger.info(f"joint_autograd: {self.controller.cost_manager.disturbace_cost.js_auto}")
             # self._logger.info(f"error: {self.canadarmWrapper.state.J - self.controller.cost_manager.disturbace_cost.js_auto.cpu().numpy()}")
