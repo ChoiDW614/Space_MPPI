@@ -246,10 +246,10 @@ class CanadarmJacob(nn.Module):
         Hm_trans = torch.einsum('bhia,bhik->bhak', Jt, Jt)
         Hm = Hm_rot + Hm_trans
 
-        Hb_inv = torch.linalg.pinv(Hb)
         alpha = 0.3
         Hbm_scaled = alpha * Hbm
-        H_star = Hm - torch.einsum('bhji,bhjk,bhkl->bhil', Hbm_scaled, Hb_inv, Hbm_scaled)
+        X = torch.linalg.solve(Hb, Hbm_scaled)
+        H_star = Hm - Hbm_scaled.transpose(-2, -1) @ X
 
         H_star = self.project_to_psd(H_star)
 
@@ -258,7 +258,7 @@ class CanadarmJacob(nn.Module):
         # norm_C       = torch.linalg.norm(C,       ord=2, dim=(-2,-1))  # [s,h]
         # ratio = norm_C / (norm_Hm + 1e-12)                              # [s,h]
         # self.logger.info(f"coupling/Hm ratio: {ratio[0].mean():.3f}")
-        
+
         return jacob_bm, H_star
 
 
@@ -330,26 +330,20 @@ class CanadarmJacob(nn.Module):
 
     def inverse_cholesky(self, H_s: torch.Tensor):
         with torch.no_grad():
-            batch_shape = H_s.shape[:-2]
-            H_s_flat = H_s.reshape(-1, 3, 3)
-            L, info = torch.linalg.cholesky_ex(H_s_flat)
-            
-            H_inv = torch.empty_like(H_s_flat)
+            *batch, n, _ = H_s.shape
+            H_s_flat = H_s.reshape(-1, n, n)
+            L, info = torch.linalg.cholesky_ex(H_s_flat, check_errors=False)
 
-            spd_mask = (info == 0)
+            Hinv = torch.empty_like(H_s_flat)
+            spd = (info == 0)
 
-            if spd_mask.any():
-                L_spd = L[spd_mask]
-                inv_spd = torch.cholesky_inverse(L_spd)
-                H_inv[spd_mask] = inv_spd
+            if spd.any():
+                Hinv[spd] = torch.cholesky_inverse(L[spd], upper=False)
 
-            nonspd_mask = ~spd_mask
-            if nonspd_mask.any():
-                H_nonspd = H_s_flat[nonspd_mask]
-                inv_nonspd = torch.linalg.pinv(H_nonspd)
-                H_inv[nonspd_mask] = inv_nonspd
-
-            H_s_inv = H_inv.reshape(*batch_shape, 3, 3)
+            if (~spd).any():
+                Hbad = H_s_flat[~spd]
+                Hinv[~spd] = torch.linalg.pinv(Hbad)
+            H_s_inv = Hinv.reshape(*batch, n, n)
         return H_s_inv
     
 
@@ -374,10 +368,10 @@ class CanadarmJacob(nn.Module):
 
     def project_to_psd(self, H: torch.Tensor, tol: float = 1e-9) -> torch.Tensor:
         Hsym = 0.5*(H + H.transpose(-2,-1))
-        eig, vec = torch.linalg.eigh(Hsym)
-        eig_clamped = torch.clamp(eig, min=tol)
-        return vec @ torch.diag_embed(eig_clamped) @ vec.transpose(-1, -2)
-
+        w, V = torch.linalg.eigh(Hsym)
+        w = torch.clamp(w, min=tol)
+        H_psd = (V * w.unsqueeze(-2)) @ V.transpose(-2, -1)
+        return H_psd
 
 
 def is_psd(A: torch.Tensor, tol: float = 1e-8) -> torch.BoolTensor:

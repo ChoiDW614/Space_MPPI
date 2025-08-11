@@ -179,8 +179,8 @@ class MPPI():
         # self.logger.info(f"EE POSE : {self.ee_pose.pose[0]:.2f}, {self.ee_pose.pose[1]:.2f}, {self.ee_pose.pose[2]:.2f}, {self.ee_pose.orientation[0]:.2f}, {self.ee_pose.orientation[1]:.2f}, {self.ee_pose.orientation[2]:.2f}, {self.ee_pose.orientation[3]:.2f}")
 
         # Chan
-        # self.cost_manager.update_weights(self.target_dist)
-
+        self.cost_manager.update_weights(self.target_dist)
+        self.logger.info(f"Target Dist : {self.target_dist}")
 
         if self.target_dist < 0.01:
             return True
@@ -208,15 +208,16 @@ class MPPI():
 
         jacob = self.calc_jacob(com_list, link_list, bm=False)
         jacob_bm, H_star = self.calc_jacob(com_list, link_list, jacob, bm=True)
+
         torque   = torch.einsum('ij,btj->bti', self.state_M, v) + self.state_G
 
         # self.logger.info(f"Traj : {trajectory}")
         self.cost_manager.update_pose_cost(qSamples, v, vSamples, trajectory, self.reference_joint, self.reference_se3, self.target_pose)
         self.cost_manager.update_covar_cost(u, v, self.sampling.sigma_matrix)
-        self.cost_manager.update_base_cost(self.base_pose, self._q)
-        self.cost_manager.update_collision_cost(self.collision_target)
-        self.cost_manager.update_ee_cost(jacob, self.target_dist)
-        self.cost_manager.update_reference_cost(link_list[...,-2])
+        # self.cost_manager.update_base_cost(self.base_pose, self._q)
+        # self.cost_manager.update_collision_cost(self.collision_target)
+        # self.cost_manager.update_ee_cost(jacob, self.target_dist)
+        # self.cost_manager.update_reference_cost(link_list[...,-2])
         self.cost_manager.update_base_disturbance_cost(jacob_bm)
         self.cost_manager.update_energy_cost(torque, H_star)
 
@@ -275,7 +276,7 @@ class MPPI():
         prev_reference_cost = self.cost_manager.reference_cost.compute_prev_reference_cost(link_list_prev[...,-2], self.reference_se3)
         prev_disturbance_cost = self.cost_manager.disturbace_cost.compute_prev_base_disturbance_cost(jacob_bm, self.v_prev)
         prev_energy_cost    = self.cost_manager.energy_cost.compute_prev_energy_cost(torque_prev, self.v_prev, H_star)
-        
+
         mean_prev_stage_cost     = torch.mean(prev_stage_cost)
         mean_prev_terminal_cost  = torch.mean(prev_terminal_cost)
         # mean_prev_covar_cost     = torch.mean(prev_covar_cost)
@@ -338,7 +339,7 @@ class MPPI():
         self.reference_joint = reference_joint.clone()
         self.reference_se3 = reference_se3.clone()
         return
-    
+
     def setstate_mass_nle(self, M: np.ndarray, G: np.ndarray):
         self.state_M = torch.from_numpy(M).to(**self.tensor_args)
         self.state_G = torch.from_numpy(G).to(**self.tensor_args)
