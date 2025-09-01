@@ -16,6 +16,7 @@ if [ ! -f /tmp/_initialized ]; then
     echo "alias rldebris='ros2 launch canadarm floating_canadarm_debris.launch.py'" >> ~/.bashrc
     echo "alias rldebris2='ros2 launch canadarm canadarm_debris.launch.py'" >> ~/.bashrc
     echo "alias ctl='ros2 launch robot_manager run_canadarm_control.launch.py'" >> ~/.bashrc
+    echo "alias rlpaper='ros2 launch canadarm paper_env.launch.py'" >> ~/.bashrc
 
     cd ~/demos_ws && colcon build --packages-select franka canadarm ets_vii simulation --parallel-workers 4 --cmake-args -DCMAKE_BUILD_TYPE=Release
     cd ~/demos_ws && colcon build --packages-select mppi_controller robot_manager --symlink-install --parallel-workers 3 --cmake-args -DCMAKE_BUILD_TYPE=Release

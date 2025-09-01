@@ -111,8 +111,8 @@ class MppiSolverNode(Node):
         self.pub_timer = self.create_timer(pub_timer_period, self.pub_timer_callback)
 
         # Log
-        self.matlab_logger = MATLABLogger(script_name=Path(__file__).stem, file_name="joint_states")
-        self.matlab_logger.create_dataset(dataset_name="joint_states", shape=8)
+        self.matlab_logger = MATLABLogger(script_name=Path(__file__).stem, file_name="solver_node")
+        self.matlab_logger.create_dataset(dataset_name="torque_debug", shape=8)
 
         # Controller MSG
         self.arm_msg = Float64MultiArray()
@@ -133,35 +133,19 @@ class MppiSolverNode(Node):
         self.tmp = None
         self.collision_targets = torch.tensor([[0.0, 0.0, 0.0]])
         self.init_collision_targets = torch.tensor([[-3.0, -2.0,  6.0], [ 2.0,  1.0,  5.0]])
+        self.init_collision_targets = torch.tensor([[-3.0, -2.0,  6.0],
+                                                    [ 2.0,  1.0,  5.0],
+                                                    [ 2.0,  3.0,  6.0],
+                                                    [-3.0,  3.0,  3.0],
+                                                    [-5.0,  3.0,  7.0]])
         self.init_tolerance = 1e-3
         self.collision_target_indices = None
 
 
     def cal_timer_callback(self):
         if self.is_target and self.init_jointCB and (self.sim_time.time > 10.0):
-            # if self.is_init_trajectory:
-            #     targetSE3 = self.targetSE3 * self.canadarmWrapper.eef_to_tip.inverse()
-            #     stime = time.time()
-            #     init_oMi = deepcopy(self.canadarmWrapper.iss_to_base * self.canadarmWrapper.state.oMi * self.canadarmWrapper.eef_to_tip)
-            #     self.canadarmIK.init_ik_trajectory(5.0, stime, init_oMi, targetSE3)
-            #     # self.tmp = self.canadarmIK.get_ik_joint_trajectory(stime, init_oMi,self.canadarmWrapper.state.q.copy(), self.n_horizon, 0.01)
-            #     self.is_init_trajectory = False
-
-            # self.canadarmIK.targetUpdate(self.targetSE3 * self.canadarmWrapper.eef_to_tip.inverse())
-            # oMi = self.canadarmWrapper.iss_to_base * self.canadarmWrapper.state.oMi
-            # ctime = time.time()
-            # jointTraj, poseTraj = self.canadarmIK.get_ik_joint_trajectory2(ctime, oMi, self.canadarmWrapper.state.q.copy(), self.n_horizon, 0.01)
-            # self.controller.setReference(jointTraj, poseTraj)
             self.controller.setstate_mass_nle(self.canadarmWrapper.state.M, self.canadarmWrapper.state.G)
-
-            torch.cuda.synchronize()
-            time1 = time.time()
-
             qdes, vdes, ades = self.controller.compute_control_input()
-
-            torch.cuda.synchronize()
-            time2 = time.time()
-            self._logger.info(f"time: {time2 - time1}")
 
             self.qdes = qdes.clone().cpu().numpy()
             self.vdes = vdes.clone().cpu().numpy()
@@ -189,6 +173,8 @@ class MppiSolverNode(Node):
             #         self.arm_msg.data[i] = 0.0
 
             u = self.canadarmWrapper.state.M @ self.ades + self.canadarmWrapper.state.G
+            self.matlab_logger.log("torque_debug", [self.sim_time.time] + u.tolist())
+
             for i in range(0,7):
                 self.arm_msg.data.append(u[i])
             for i, x in enumerate(self.arm_msg.data):
@@ -214,7 +200,6 @@ class MppiSolverNode(Node):
             self.canadarmWrapper.state.v = self.interface_values.clone().cpu().numpy()[:,1]
             self.canadarmWrapper.computeAllTerms()
             self.init_jointCB = True
-            self.matlab_logger.log("joint_states", [self.docking_interface.sim_time.time] + self.interface_values[:, 0].tolist())
 
             # #chan
             # self.get_logger().warn(f"oMi : {self.canadarmWrapper.state.oMi * self.canadarmWrapper.eef_to_tip}")
@@ -263,6 +248,7 @@ class MppiSolverNode(Node):
         self.docking_interface.sim_time.time = msg.clock
         self.controller.sim_time.time = msg.clock
         self.sim_time.time = msg.clock
+        self._logger.info(f"sim time: {self.sim_time.time}")
         return
     
     def collision_target_callback(self, msg):
@@ -299,6 +285,7 @@ def main():
         try:
             node.docking_interface.matlab_logger.close()
             node.controller.matlab_logger.close()
+            node.matlab_logger.close()
         except Exception as e:
             node.get_logger().error(f"Failed to close log file: {e}")
         node.destroy_node()

@@ -39,7 +39,7 @@ cost:
   
   collision:
     weight: 1000.0
-    softcap: 0.6
+    softcap: 0.3
 
   stop:
     weight: 0.25

@@ -18,6 +18,7 @@ class CollisionAvoidanceCost():
 
         self.collision_weight = params['weight']
         self.collision_softcap = params['softcap']
+        self.alpha = 100
 
         # Neural network for calculate distances
         # self.model = MLPRegressionNormDropoutELU().to(**self.tensor_args)
@@ -36,7 +37,7 @@ class CollisionAvoidanceCost():
         # variables for calculate cost
         self.mount_tf = torch.tensor([[1.0, 0.0, 0.0, 0.0], [0.0, -1.0, 0.0, 0.0], [0.0, 0.0, -1.0, 3.6], [0.0, 0.0, 0.0, 1.0]], **self.tensor_args)
         self.zero = torch.tensor(0.0, **self.tensor_args)
-        self.softcap = torch.tensor(self.collision_softcap, **self.tensor_args)
+        self.softcap = torch.log(torch.tensor(self.collision_softcap, **self.tensor_args))
         return
 
 
@@ -62,12 +63,17 @@ class CollisionAvoidanceCost():
                     qSamples.clone().repeat_interleave(n_targets, dim=0),
                     p_trans.repeat(n_sample, 1).view(-1, 1, targets.size(-1)).expand(-1, self.n_horizon, targets.size(-1))
                 ], dim=-1)
-
+                
                 output = 0.01 * self.model(input) # train NN by multiplying the training data by 100
                 dist = output.unflatten(0, (n_sample, n_targets)).permute(0, 2, 1, 3).to(**self.tensor_args) # (n_sample, n_horizon, n_target, n_dof+1))
                 dist = torch.clamp(dist, min=0)
 
-        cost_collision = torch.sum(torch.max(self.zero, -torch.log(dist) + self.softcap), dim=(2,3))
+                self.alpha = torch.log(torch.tensor(dist.size(2) * dist.size(3), **self.tensor_args)) / (self.collision_softcap * 0.05)
+
+        # cost_collision = torch.sum(torch.max(self.zero, -torch.log(dist) + self.softcap), dim=(2,3))
+        dist_agg = -torch.logsumexp(-self.alpha * dist, dim=(2,3)) / self.alpha
+        cost_collision = torch.relu(self.softcap - torch.log(torch.clamp(dist_agg, min=1e-9)))
+
         cost_collision = self.collision_weight * cost_collision
 
         cost_collision = cost_collision * self.gamma_horizon_gpu
@@ -102,7 +108,11 @@ class CollisionAvoidanceCost():
                 dist = output.permute(1, 0, 2).to(**self.tensor_args) # (n_horizon, n_target, n_dof+1))
                 dist = torch.clamp(dist, min=0)
 
-        cost_collision = torch.sum(torch.max(self.zero, -torch.log(dist) + self.softcap), dim=(1, 2))
+                # self.alpha = torch.log(torch.tensor(dist.size(1) * dist.size(2), **self.tensor_args)) / (self.collision_softcap * 0.05)
+
+        # cost_collision = torch.sum(torch.max(self.zero, -torch.log(dist) + self.softcap), dim=(1, 2))
+        dist_agg = -torch.logsumexp(-self.alpha * dist, dim=(1,2)) / self.alpha
+        cost_collision = torch.relu(self.softcap - torch.log(torch.clamp(dist_agg, min=1e-9)))
         cost_collision = self.collision_weight * cost_collision
 
         cost_collision = cost_collision * self.gamma_horizon_gpu

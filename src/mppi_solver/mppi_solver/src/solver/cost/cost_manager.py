@@ -102,12 +102,8 @@ class CostManager:
         self.sigma_matrix = sigma_matrix.clone()
 
 
-    def update_base_cost(self, base_pose: Pose, q: torch.Tensor):
+    def update_collision_cost(self, base_pose: Pose, collision_target: torch.Tensor):
         self.base_pose = base_pose
-        self.test_joint = q
-
-
-    def update_collision_cost(self, collision_target: torch.Tensor):
         self.collision_target = collision_target.clone()
 
 
@@ -199,13 +195,13 @@ class CostManager:
         # S += self.reference_cost.compute_reference_cost(self.link_list, self.pose_trajectories)
         # S += self.disturbace_cost.compute_base_disturbance_cost(self.jacob_bm, self.vSamples)
 
-
         # Chan Cost
         S += self.pose_cost.compute(self.eef_trajectories, self.target.tf_matrix(self.tensor_args))
         S += self.vel_cost.compute(self.vSamples.to(**self.tensor_args))
         S += self.vel_cost.compute_vel_penalty(self.vSamples.to(**self.tensor_args))
         S += self.covar_cost.compute(self.u, self.sigma_matrix)
-        S += self.disturbace_cost.compute_base_disturbance_cost(self.jacob_bm, self.vSamples)
+        S += self.collision_cost.compute_collision_cost(self.base_pose, self.qSamples, self.collision_target)
+        S += self.energy_cost.compute_energy_cost(self.torque, self.vSamples, self.H_star)
 
         # Chan Log
         # self.logger.info(f"Sigma Matrix : {self.sigma_matrix.shape}")

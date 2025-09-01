@@ -367,7 +367,7 @@ class CanadarmJacob(nn.Module):
     
 
     def project_to_psd(self, H: torch.Tensor, tol: float = 1e-9) -> torch.Tensor:
-        Hsym = 0.5*(H + H.transpose(-2,-1))
+        Hsym = 0.5 * (H + H.transpose(-2,-1))
         w, V = torch.linalg.eigh(Hsym)
         w = torch.clamp(w, min=tol)
         H_psd = (V * w.unsqueeze(-2)) @ V.transpose(-2, -1)

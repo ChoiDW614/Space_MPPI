@@ -21,11 +21,12 @@ class StandardSamplling:
         # self.sigma[:3, :3] *= 3.0
         # self.sigma[3:, 3:] *= 3.0
 
-
         self.sigma_matrix = self.sigma.expand(self.n_sample, self.n_horizon, -1, -1)
 
         self.sigma_update = False
         self.init_sigma: torch.Tensor = self.sigma.clone()
+        torch.manual_seed(43)
+
 
     def sampling(self):
         # standard_normal_noise = torch.randn(self.n_sample, self.n_horizon, self.n_action, device=self.device)
@@ -66,5 +67,5 @@ class StandardSamplling:
 
         dq = v_prev * dt + 0.5 * u_prev * dt**2
         q = torch.cumsum(dq, dim=0) + q0
-        return q.unsqueeze(0)
+        return q.unsqueeze(0), v.unsqueeze(0)
     

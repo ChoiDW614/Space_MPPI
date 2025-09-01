@@ -128,14 +128,20 @@ class MPPI():
 
         # Log
         self.sim_time = Time()
-        self.matlab_logger = MATLABLogger(script_name=Path(__file__).stem, file_name="end_effector_pose")
-        self.matlab_logger.create_dataset(dataset_name="end_effector_pose", shape=7)
-        self.matlab_logger.create_dataset(dataset_name="pos_err", shape=4)
-        self.matlab_logger.create_dataset(dataset_name="ori_err", shape=4)
-        self.matlab_logger.create_dataset(dataset_name="cost", shape=10)
-        self.matlab_logger.create_dataset(dataset_name="sigma", shape=(self.n_action+1))
-        self.matlab_logger.create_dataset(dataset_name="base", shape=7)
+        self.matlab_logger = MATLABLogger(script_name=Path(__file__).stem, file_name="mppi_canadarm")
+        self.matlab_logger.create_dataset(dataset_name="joint_angle", shape=8)
+        self.matlab_logger.create_dataset(dataset_name="joint_angular_velocity", shape=8)
+        self.matlab_logger.create_dataset(dataset_name="endeffector_pose", shape=7)
+        self.matlab_logger.create_dataset(dataset_name="target_pose", shape=7)
         self.matlab_logger.create_dataset(dataset_name="torque", shape=8)
+        self.matlab_logger.create_dataset(dataset_name="torque_clamp", shape=8)
+        self.matlab_logger.create_dataset(dataset_name="torque_energy", shape=8)
+        self.matlab_logger.create_dataset(dataset_name="kinetic_energy", shape=2)
+        self.matlab_logger.create_dataset(dataset_name="base_motion", shape=7)
+
+        # self.matlab_logger.create_dataset(dataset_name="cost", shape=10)
+        # self.matlab_logger.create_dataset(dataset_name="sigma", shape=(self.n_action+1))
+        # self.matlab_logger.create_dataset(dataset_name="base", shape=7)
 
         # test
         # from torch.utils.tensorboard import SummaryWriter
@@ -180,7 +186,7 @@ class MPPI():
 
         # Chan
         self.cost_manager.update_weights(self.target_dist)
-        self.logger.info(f"Target Dist : {self.target_dist}")
+        # self.logger.info(f"Target Dist : {self.target_dist}")
 
         if self.target_dist < 0.01:
             return True
@@ -192,7 +198,7 @@ class MPPI():
         if self.check_reach():
             return self.qdes, self.vdes, self.u
         
-        # self.MATLAB_log()
+        self.MATLAB_log()
 
         u = self.u_prev.clone()
         # noise = self.sample_gen.sampling()
@@ -209,13 +215,12 @@ class MPPI():
         jacob = self.calc_jacob(com_list, link_list, bm=False)
         jacob_bm, H_star = self.calc_jacob(com_list, link_list, jacob, bm=True)
 
-        torque   = torch.einsum('ij,btj->bti', self.state_M, v) + self.state_G
+        torque = torch.einsum('ij,btj->bti', self.state_M, v) + self.state_G
 
         # self.logger.info(f"Traj : {trajectory}")
         self.cost_manager.update_pose_cost(qSamples, v, vSamples, trajectory, self.reference_joint, self.reference_se3, self.target_pose)
         self.cost_manager.update_covar_cost(u, v, self.sampling.sigma_matrix)
-        # self.cost_manager.update_base_cost(self.base_pose, self._q)
-        # self.cost_manager.update_collision_cost(self.collision_target)
+        self.cost_manager.update_collision_cost(self.base_pose, self.collision_target)
         # self.cost_manager.update_ee_cost(jacob, self.target_dist)
         # self.cost_manager.update_reference_cost(link_list[...,-2])
         self.cost_manager.update_base_disturbance_cost(jacob_bm)
@@ -237,76 +242,13 @@ class MPPI():
         self.noise_prev = noise.clone()
 
         self.vdes = self._qdot + self.u * self.dt
-        self.qdes = self._q + self._qddot * self.dt + 0.5 * self.u * self.dt * self.dt
+        self.qdes = self._q + self._qdot * self.dt + 0.5 * self.u * self.dt * self.dt
         return self.qdes, self.vdes, self.u
 
 
     def compute_weights(self, S: torch.Tensor, _lambda: float) -> torch.Tensor:
         weights = torch.softmax(-S / _lambda, dim=0)  # (n_samples,)
         return weights
-    
-
-    def MATLAB_log(self):
-        # q_prev, self.v_prev = self.sample_gen.get_prev_sample_joint(self.u_prev, self._q, self._qdot, self.dt)
-        q_prev, self.v_prev = self.sampling.get_prev_sample_joint(self.u_prev, self._q, self._qdot, self.dt)
-
-        self.fk_canadarm.set_samples_and_timesteps(n_samples=1, n_horizon=self.n_horizon)
-        ee_traj_prev, link_list_prev, com_list_prev = self.fk_canadarm(q_prev,
-                                                    'EE_SSRMS_tip', 'Base_SSRMS', self.base_pose.tf_matrix(self.tensor_args))
-        self.fk_canadarm.set_samples_and_timesteps(n_samples=self.n_samples, n_horizon=self.n_horizon)
-        
-        ee_traj_prev = ee_traj_prev.squeeze(0).cpu()
-        ee_jacobian_prev = self.calc_jacob(com_list_prev, link_list_prev, bm=False)
-        jacob_bm, H_star = self.calc_jacob(com_list_prev, link_list_prev, ee_jacobian_prev, bm=True)
-        ee_jacobian_prev = ee_jacobian_prev.squeeze(0)
-        torque_prev = self.state_M @ self.u_prev[0] + self.state_G
-        # self.torque_sum = self.torque_sum + torque_prev
-
-        # self.logger.info(f"H_star: {is_psd(H_star[0,:,:,:])}")
-
-        prev_stage_cost     = self.cost_manager.pose_cost.compute_prev_stage_cost(ee_traj_prev, self.target_pose)
-        prev_terminal_cost  = self.cost_manager.pose_cost.compute_prev_terminal_cost(ee_traj_prev, self.target_pose)
-        # prev_covar_cost     = self.cost_manager.covar_cost.compute_prev_covar_cost(self.sample_gen.sigma_matrix, self.u_prev, self.noise_prev)
-        # prev_centering_cost = self.cost_manager.joint_cost.compute_prev_centering_cost(q_prev)
-        # prev_tracking_cost  = self.cost_manager.joint_cost.compute_prev_jointTraj_cost(q_prev, self.reference_joint)
-        prev_action_cost    = self.cost_manager.action_cost.compute_prev_action_cost(self.u_prev)
-        prev_collision_cost = self.cost_manager.collision_cost.compute_prev_collision_cost(self.base_pose, q_prev, self.collision_target)
-        prev_stop_cost      = self.cost_manager.stop_cost.compute_prev_stop_cost(self.v_prev)
-        prev_ee_cost        = self.cost_manager.ee_cost.compute_prev_ee_cost(self.v_prev, ee_jacobian_prev, self.target_dist)
-        prev_reference_cost = self.cost_manager.reference_cost.compute_prev_reference_cost(link_list_prev[...,-2], self.reference_se3)
-        prev_disturbance_cost = self.cost_manager.disturbace_cost.compute_prev_base_disturbance_cost(jacob_bm, self.v_prev)
-        prev_energy_cost    = self.cost_manager.energy_cost.compute_prev_energy_cost(torque_prev, self.v_prev, H_star)
-
-        mean_prev_stage_cost     = torch.mean(prev_stage_cost)
-        mean_prev_terminal_cost  = torch.mean(prev_terminal_cost)
-        # mean_prev_covar_cost     = torch.mean(prev_covar_cost)
-        # mean_prev_centering_cost = torch.mean(prev_centering_cost)
-        # mean_prev_tracking_cost  = torch.mean(prev_tracking_cost)
-        mean_prev_action_cost    = torch.mean(prev_action_cost)
-        mean_prev_collision_cost = torch.mean(prev_collision_cost)
-        mean_prev_stop_cost      = torch.mean(prev_stop_cost)
-        mean_prev_ee_cost        = torch.mean(prev_ee_cost)
-        mean_prev_reference_cost = torch.mean(prev_reference_cost)
-        mean_prev_disturbance_cost = torch.mean(prev_disturbance_cost)
-        mean_prev_energy_cost    = torch.mean(prev_energy_cost)
-        
-        self.matlab_logger.log("end_effector_pose", [self.sim_time.time] + self.ee_pose.np_pose.tolist() + self.ee_pose.np_rpy.tolist())
-        self.matlab_logger.log("pos_err", [self.sim_time.time] + (self.ee_pose.np_pose - self.target_pose.np_pose).tolist())
-        self.matlab_logger.log("ori_err", [self.sim_time.time] + self.diff_ori_3d.tolist())
-        self.matlab_logger.log("cost", [self.sim_time.time] + [mean_prev_stage_cost.item(),
-                                                               mean_prev_terminal_cost.item(),
-                                                               mean_prev_action_cost.item(),
-                                                               mean_prev_collision_cost.item(),
-                                                               mean_prev_stop_cost.item(),
-                                                               mean_prev_ee_cost.item(),
-                                                               mean_prev_reference_cost.item(),
-                                                               mean_prev_disturbance_cost.item(),
-                                                               mean_prev_energy_cost.item()])
-        self.matlab_logger.log("sigma", [self.sim_time.time] + torch.diag(self.sample_gen.sigma).tolist())
-        self.matlab_logger.log("base", [self.sim_time.time] + \
-                               self.cost_manager.disturbace_cost.compute_base_disturbance(jacob_bm, self.v_prev).tolist())
-        self.matlab_logger.log("torque", [self.sim_time.time] + torque_prev.tolist())
-        return
     
 
     def set_joint(self, joint_states: torch.Tensor):
@@ -356,3 +298,94 @@ class MPPI():
         jaco = self.calc_jacob(com_list, link_list, bm=False)
         self.calc_jacob(com_list, link_list, jaco, bm=True)
         return
+
+
+    def MATLAB_log(self):
+        q_prev, v_prev = self.sampling.get_prev_sample_joint(self.u_prev, self._q, self._qdot, self.dt)
+        self.fk_canadarm.set_samples_and_timesteps(n_samples=1, n_horizon=self.n_horizon)
+        ee_traj_prev, link_list_prev, com_list_prev = self.fk_canadarm(q_prev,
+                                                    'EE_SSRMS_tip', 'Base_SSRMS', self.base_pose.tf_matrix(self.tensor_args))
+        self.fk_canadarm.set_samples_and_timesteps(n_samples=self.n_samples, n_horizon=self.n_horizon)
+        ee_jacobian_prev = self.calc_jacob(com_list_prev, link_list_prev, bm=False)
+        jacob_bm, H_star = self.calc_jacob(com_list_prev, link_list_prev, ee_jacobian_prev, bm=True)
+
+        v_prev = v_prev.squeeze(0)
+        H_star = H_star.squeeze(0)
+
+        # Torque
+        torque = self.state_M @ self.u_prev[0] + self.state_G
+        torque_clamp = torch.clamp(torque, -2332, 2332)
+        torque_energy = torch.einsum('a,ha->ha', torque_clamp, v_prev)
+        kinetic_energy = 0.5 * torch.einsum('hi,hij,hj->h', v_prev, H_star, v_prev)
+
+        self.matlab_logger.log("joint_angle", [self.sim_time.time] + self._q.tolist())
+        self.matlab_logger.log("joint_angular_velocity", [self.sim_time.time] + self._qdot.tolist())
+        self.matlab_logger.log("endeffector_pose", [self.sim_time.time] + self.ee_pose.np_pose.tolist() + self.ee_pose.np_rpy.tolist())
+        self.matlab_logger.log("target_pose", [self.sim_time.time] + self.target_pose.np_pose.tolist() + self.target_pose.np_rpy.tolist())
+        self.matlab_logger.log("torque", [self.sim_time.time] + torque.tolist())
+        self.matlab_logger.log("torque_clamp", [self.sim_time.time] + torque_clamp.tolist())
+        self.matlab_logger.log("torque_energy", [self.sim_time.time] + torque_energy[0,:].tolist())
+        self.matlab_logger.log("kinetic_energy", [self.sim_time.time, kinetic_energy[0].tolist()])
+        self.matlab_logger.log("base_motion", [self.sim_time.time] + self.base_pose.np_pose.tolist() + self.base_pose.np_rpy.tolist())
+        return
+
+
+    # def MATLAB_log(self):
+    #     # q_prev, self.v_prev = self.sample_gen.get_prev_sample_joint(self.u_prev, self._q, self._qdot, self.dt)
+    #     q_prev, self.v_prev = self.sampling.get_prev_sample_joint(self.u_prev, self._q, self._qdot, self.dt)
+
+    #     self.fk_canadarm.set_samples_and_timesteps(n_samples=1, n_horizon=self.n_horizon)
+    #     ee_traj_prev, link_list_prev, com_list_prev = self.fk_canadarm(q_prev,
+    #                                                 'EE_SSRMS_tip', 'Base_SSRMS', self.base_pose.tf_matrix(self.tensor_args))
+    #     self.fk_canadarm.set_samples_and_timesteps(n_samples=self.n_samples, n_horizon=self.n_horizon)
+        
+    #     ee_traj_prev = ee_traj_prev.squeeze(0).cpu()
+    #     ee_jacobian_prev = self.calc_jacob(com_list_prev, link_list_prev, bm=False)
+    #     jacob_bm, H_star = self.calc_jacob(com_list_prev, link_list_prev, ee_jacobian_prev, bm=True)
+    #     ee_jacobian_prev = ee_jacobian_prev.squeeze(0)
+    #     torque_prev = self.state_M @ self.u_prev[0] + self.state_G
+    #     # self.torque_sum = self.torque_sum + torque_prev
+
+    #     prev_stage_cost     = self.cost_manager.pose_cost.compute_prev_stage_cost(ee_traj_prev, self.target_pose)
+    #     prev_terminal_cost  = self.cost_manager.pose_cost.compute_prev_terminal_cost(ee_traj_prev, self.target_pose)
+    #     # prev_covar_cost     = self.cost_manager.covar_cost.compute_prev_covar_cost(self.sample_gen.sigma_matrix, self.u_prev, self.noise_prev)
+    #     # prev_centering_cost = self.cost_manager.joint_cost.compute_prev_centering_cost(q_prev)
+    #     # prev_tracking_cost  = self.cost_manager.joint_cost.compute_prev_jointTraj_cost(q_prev, self.reference_joint)
+    #     prev_action_cost    = self.cost_manager.action_cost.compute_prev_action_cost(self.u_prev)
+    #     prev_collision_cost = self.cost_manager.collision_cost.compute_prev_collision_cost(self.base_pose, q_prev, self.collision_target)
+    #     prev_stop_cost      = self.cost_manager.stop_cost.compute_prev_stop_cost(self.v_prev)
+    #     prev_ee_cost        = self.cost_manager.ee_cost.compute_prev_ee_cost(self.v_prev, ee_jacobian_prev, self.target_dist)
+    #     prev_reference_cost = self.cost_manager.reference_cost.compute_prev_reference_cost(link_list_prev[...,-2], self.reference_se3)
+    #     prev_disturbance_cost = self.cost_manager.disturbace_cost.compute_prev_base_disturbance_cost(jacob_bm, self.v_prev)
+    #     prev_energy_cost    = self.cost_manager.energy_cost.compute_prev_energy_cost(torque_prev, self.v_prev, H_star)
+
+    #     mean_prev_stage_cost     = torch.mean(prev_stage_cost)
+    #     mean_prev_terminal_cost  = torch.mean(prev_terminal_cost)
+    #     # mean_prev_covar_cost     = torch.mean(prev_covar_cost)
+    #     # mean_prev_centering_cost = torch.mean(prev_centering_cost)
+    #     # mean_prev_tracking_cost  = torch.mean(prev_tracking_cost)
+    #     mean_prev_action_cost    = torch.mean(prev_action_cost)
+    #     mean_prev_collision_cost = torch.mean(prev_collision_cost)
+    #     mean_prev_stop_cost      = torch.mean(prev_stop_cost)
+    #     mean_prev_ee_cost        = torch.mean(prev_ee_cost)
+    #     mean_prev_reference_cost = torch.mean(prev_reference_cost)
+    #     mean_prev_disturbance_cost = torch.mean(prev_disturbance_cost)
+    #     mean_prev_energy_cost    = torch.mean(prev_energy_cost)
+        
+    #     self.matlab_logger.log("end_effector_pose", [self.sim_time.time] + self.ee_pose.np_pose.tolist() + self.ee_pose.np_rpy.tolist())
+    #     self.matlab_logger.log("pos_err", [self.sim_time.time] + (self.ee_pose.np_pose - self.target_pose.np_pose).tolist())
+    #     self.matlab_logger.log("ori_err", [self.sim_time.time] + self.diff_ori_3d.tolist())
+    #     self.matlab_logger.log("cost", [self.sim_time.time] + [mean_prev_stage_cost.item(),
+    #                                                            mean_prev_terminal_cost.item(),
+    #                                                            mean_prev_action_cost.item(),
+    #                                                            mean_prev_collision_cost.item(),
+    #                                                            mean_prev_stop_cost.item(),
+    #                                                            mean_prev_ee_cost.item(),
+    #                                                            mean_prev_reference_cost.item(),
+    #                                                            mean_prev_disturbance_cost.item(),
+    #                                                            mean_prev_energy_cost.item()])
+    #     self.matlab_logger.log("sigma", [self.sim_time.time] + torch.diag(self.sample_gen.sigma).tolist())
+    #     self.matlab_logger.log("base", [self.sim_time.time] + \
+    #                            self.cost_manager.disturbace_cost.compute_base_disturbance(jacob_bm, self.v_prev).tolist())
+    #     self.matlab_logger.log("torque", [self.sim_time.time] + torque_prev.tolist())
+    #     return

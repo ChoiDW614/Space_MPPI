@@ -1,0 +1,58 @@
+<sdf version="1.8">
+  <world name="default">
+    <physics name="1ms" type="ignored">
+      <max_step_size>0.001</max_step_size>
+      <real_time_factor>1.0</real_time_factor>
+    </physics>
+    <plugin
+      filename="libignition-gazebo-physics-system.so"
+      name="ignition::gazebo::systems::Physics">
+    </plugin>
+    <plugin
+      filename="ignition-gazebo-user-commands-system"
+      name="ignition::gazebo::systems::UserCommands">
+    </plugin>
+    <plugin
+      filename="libignition-gazebo-scene-broadcaster-system.so"
+      name="ignition::gazebo::systems::SceneBroadcaster">
+    </plugin>
+    <plugin
+      filename="gz-sim-apply-link-wrench-system" 
+      name="gz::sim::systems::ApplyLinkWrench">
+    </plugin>
+
+    <scene>
+      <grid>false</grid>
+    </scene>
+
+    <gui fullscreen="0">
+      <plugin filename="GzScene3D" name="3D View">
+        <ignition-gui>
+          <title>3D View</title>
+          <property type="bool" key="showTitleBar">true</property>
+          <property type="string" key="state">docked</property>
+        </ignition-gui>
+        <engine>ogre2</engine>
+        <scene>scene</scene>
+        <background_color>0.0 0.0 0.0</background_color>
+        <camera_pose>-16.0 0.0 2.5 0.0 -0.1 0.0</camera_pose>
+      </plugin>
+    </gui>
+
+    <light type="directional" name="sun">
+      <cast_shadows>true</cast_shadows>
+      <pose>0 -10 10 0 0 0</pose>
+      <diffuse>0.8 0.8 0.8 1</diffuse>
+      <specular>0.2 0.2 0.2 1</specular>
+      <attenuation>
+        <range>1000</range>
+        <constant>0.9</constant>
+        <linear>0.01</linear>
+        <quadratic>0.001</quadratic>
+      </attenuation>
+      <direction>10 10 -0.9</direction>
+    </light>
+    <gravity>0 0 0</gravity>
+
+  </world>
+</sdf>
